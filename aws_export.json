@@ -1,0 +1,74 @@
+{
+  "UserDetailList": [
+    {
+      "UserName": "UserA",
+      "UserPolicyList": [
+        {
+          "PolicyDocument": {
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    }
+  ],
+  "RoleDetailList": [
+    {
+      "RoleName": "RoleDev",
+      "AssumeRolePolicyDocument": {
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "AWS": "UserA"
+            }
+          }
+        ]
+      },
+      "RolePolicyList": [
+        {
+          "PolicyDocument": {
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    },
+    {
+      "RoleName": "RoleAdmin",
+      "AssumeRolePolicyDocument": {
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "AWS": "RoleDev"
+            }
+          }
+        ]
+      },
+      "RolePolicyList": [
+        {
+          "PolicyDocument": {
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "AdministratorAccess"
+              }
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    }
+  ]
+}
