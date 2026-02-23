@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IAM Risk Engine | Setup</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
+    <script src="https://unpkg.com/feather-icons"></script>
+</head>
+
+<body>
+
+    <aside class="sidebar">
+        <div class="brand">
+            <i data-feather="shield"></i>
+            <span>IAM Defender</span>
+        </div>
+
+        <!-- <nav>
+            <ul>
+                <li><a href="/"><i data-feather="grid"></i> Overview</a></li>
+                <li class="active"><a href="/setup"><i data-feather="upload-cloud"></i> Data Engine</a></li>
+                <li><a href="#"><i data-feather="settings"></i> Settings</a></li>
+            </ul>
+        </nav> -->
+    </aside>
+
+    <main class="main-content">
+
+        <header class="top-bar">
+            <div>
+                <h1>Data Engine & Simulation</h1>
+                <p class="control-desc">
+                    Configure IAM sources and execute risk analysis.
+                </p>
+            </div>
+        </header>
+
+        <div class="container-narrow">
+        
+            <section class="card">
+                <div class="card-header">
+                    <h2><i data-feather="file-plus"></i> Upload IAM Dataset</h2>
+                </div>
+        
+                <form action="/analyze" method="post" enctype="multipart/form-data">
+        
+                    <div class="file-drop-area" id="drop-area">
+                        <div class="upload-icon-circle">
+                            <i data-feather="upload"></i>
+                        </div>
+                        <span class="file-msg">
+                            Click to browse or drag IAM JSON file
+                        </span>
+                        <p class="file-hint">
+                            Supported format: AWS IAM Policy Simulation JSON
+                        </p>
+                        <input type="file" name="file" id="file-input" hidden>
+                    </div>
+        
+                    <div id="file-name-display" class="file-name-pill"></div>
+        
+                    <button type="submit" class="btn-primary main-action-btn">
+                        <i data-feather="play"></i>
+                        Run Risk Analysis
+                    </button>
+        
+                </form>
+            </section>
+        
+            <!-- <section class="card">
+                <div class="card-header">
+                    <h2><i data-feather="cpu"></i> Generate Simulated Enterprise</h2>
+                </div>
+        
+                <form action="/analyze" method="post">
+                    <input type="hidden" name="simulate" value="1">
+                    <button type="submit" class="btn-primary main-action-btn">
+                        <i data-feather="activity"></i>
+                        Run Enterprise Simulation
+                    </button>
+                </form>
+            </section>
+        
+            <section class="card">
+                <div class="card-header">
+                    <h2 style="color: var(--critical);">
+                        <i data-feather="alert-triangle"></i>
+                        System Controls
+                    </h2>
+                </div>
+        
+                <div class="action-row">
+                    <div>
+                        <strong>Reset Engine State</strong>
+                        <p class="control-desc">
+                            Clears cached principals and resets graph state.
+                        </p>
+                    </div>
+        
+                    <form action="/clear" method="post">
+                        <button type="submit" class="btn-danger">
+                            Reset System
+                        </button>
+                    </form>
+                </div>
+            </section> -->
+        
+        </div>
+
+    </main>
+
+    <script>
+        feather.replace();
+
+        const fileInput = document.getElementById('file-input');
+        const dropArea = document.getElementById('drop-area');
+        const nameDisplay = document.getElementById('file-name-display');
+
+        dropArea.addEventListener('click', () => fileInput.click());
+
+        dropArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropArea.style.borderColor = "var(--accent)";
+        });
+
+        dropArea.addEventListener('dragleave', () => {
+            dropArea.style.borderColor = "var(--border)";
+        });
+
+        dropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileInput.files = e.dataTransfer.files;
+            nameDisplay.textContent = "Selected: " + e.dataTransfer.files[0].name;
+            dropArea.style.borderColor = "var(--accent)";
+        });
+
+        fileInput.addEventListener('change', function () {
+            if (this.files.length > 0) {
+                nameDisplay.textContent = "Selected: " + this.files[0].name;
+                dropArea.style.borderColor = "var(--accent)";
+            }
+        });
+    </script>
+
+</body>
+
+</html>

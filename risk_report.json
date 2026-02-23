@@ -1,0 +1,66 @@
+{
+  "AccountId": "123456789012",
+
+  "UserDetailList": [
+    {
+      "UserName": "low-priv-user",
+      "Arn": "arn:aws:iam::123456789012:user/low-priv-user",
+      "UserPolicyList": [
+        {
+          "PolicyName": "PassRolePolicy",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "iam:PassRole",
+                  "sts:AssumeRole"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ],
+      "AttachedManagedPolicies": []
+    },
+
+    {
+      "UserName": "direct-admin-user",
+      "Arn": "arn:aws:iam::123456789012:user/direct-admin-user",
+      "UserPolicyList": [],
+      "AttachedManagedPolicies": [
+        {
+          "PolicyName": "AdministratorAccess",
+          "PolicyArn": "arn:aws:iam::aws:policy/AdministratorAccess"
+        }
+      ]
+    }
+  ],
+
+  "RoleDetailList": [
+    {
+      "RoleName": "AdminRole",
+      "Arn": "arn:aws:iam::123456789012:role/AdminRole",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "AWS": "arn:aws:iam::123456789012:user/low-priv-user"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "AttachedManagedPolicies": [
+        {
+          "PolicyName": "AdministratorAccess",
+          "PolicyArn": "arn:aws:iam::aws:policy/AdministratorAccess"
+        }
+      ]
+    }
+  ]
+}

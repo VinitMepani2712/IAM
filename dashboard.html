@@ -1,0 +1,56 @@
+
+    <html>
+    <head>
+        <title>IAM Global Risk Dashboard</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    </head>
+    <body>
+        <h1>IAM Global Risk Dashboard</h1>
+
+        <h2>Environment Summary</h2>
+        <ul>
+            <li>Total Principals: 12</li>
+            <li>Total Findings: 30</li>
+            <li>Vulnerable Principals: 5</li>
+        </ul>
+
+        <h2>Severity Distribution</h2>
+        <canvas id="severityChart"></canvas>
+
+        <h2>Attack Pattern Distribution</h2>
+        <canvas id="patternChart"></canvas>
+
+        <h2>Global Dominators (Choke Points)</h2>
+        <ul>
+            
+        </ul>
+
+        <h2>Global Weighted Minimal Remediation Set</h2>
+        <ul>
+            <li>('SupportRole', 'ACTION::sts:AssumeRole::DevOpsRole')</li><li>('ProdPivotRole', 'ACTION::sts:AssumeRole')</li><li>('SupportRole', 'ACTION::sts:AssumeRole')</li><li>('ACTION::iam:PassRole::TempAccessRole', 'TempAccessRole')</li><li>('ACTION::sts:AssumeRole::DeveloperRole', 'DeveloperRole')</li><li>('DeveloperRole', 'ACTION::ec2:RunInstances')</li>
+        </ul>
+
+        <script>
+            new Chart(document.getElementById('severityChart'), {
+                type: 'pie',
+                data: {
+                    labels: ['HIGH', 'CRITICAL'],
+                    datasets: [{
+                        data: [7, 23]
+                    }]
+                }
+            });
+
+            new Chart(document.getElementById('patternChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['MULTI_HOP_LATERAL_MOVEMENT', 'PASSROLE_COMPUTE_EXECUTION', 'ROLE_ASSUMPTION_ABUSE'],
+                    datasets: [{
+                        data: [18, 3, 9]
+                    }]
+                }
+            });
+        </script>
+    </body>
+    </html>
+    

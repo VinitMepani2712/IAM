@@ -1,6 +1,6 @@
 import time
 import matplotlib.pyplot as plt
-from models.entities import Principal
+from core.entities import Principal
 from graph.attack_graph import build_attack_graph
 from graph.reachability import find_minimal_escalation_path
 
@@ -14,6 +14,7 @@ def generate_chain_environment(size):
 
     user = Principal(
         name="UserA",
+        account_id="BenchmarkAccount",
         type="user",
         allow_actions={"sts:AssumeRole"},
         deny_actions=set(),
@@ -30,6 +31,7 @@ def generate_chain_environment(size):
 
         role = Principal(
             name=role_name,
+            account_id="BenchmarkAccount",
             type="role",
             allow_actions=allow,
             deny_actions=set(),
