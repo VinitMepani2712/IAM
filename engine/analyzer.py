@@ -17,23 +17,42 @@ from graph.reachability import find_all_escalation_paths
 def analyze_environment_data(principals):
 
     graph = build_attack_graph(principals)
+
+    # ── Pre-compute which principals are reachable FROM other principals ──────
+    # A principal is "an attacker entry point" if at least one OTHER principal
+    # has a graph edge leading into it, OR if it is a user (users are always
+    # potential entry points — they represent human actors).
+    # Roles that nobody can assume (no incoming edges from other principals)
+    # only generate findings if they expose a path that other principals will
+    # use; but their OWN 2-hop direct-capability path (Role → CAPABILITY) is
+    # not an escalation — nobody arrived there through an exploit.
+    inbound_principals = set()   # principals that have at least one caller
+    for src, neighbors in graph.adjacency.items():
+        for dst in neighbors:
+            if dst in principals:
+                inbound_principals.add(dst)
+
     findings = []
 
     for principal_name, principal in principals.items():
 
         paths = find_all_escalation_paths(graph, principal_name)
-        print(f"\nChecking principal: {principal_name}")
-        print("Paths found:", paths)
         if not paths:
             continue
 
+        # Capabilities the principal directly holds WITHOUT needing combinations.
+        # We only skip FULL_ADMIN / ROLE_ASSUMPTION / PRIVILEGE_PROPAGATION
+        # because those are broad "already elevated" states.
+        # ACCESS_KEY_PERSISTENCE, CONSOLE_ACCESS, IDENTITY_CREATION, COMPUTE_LAUNCH,
+        # and POLICY_MODIFICATION are always reported — they represent concrete
+        # attack capabilities regardless of whether the principal "directly" has them.
+        SKIP_IF_ALREADY_HELD = {"FULL_ADMIN", "ROLE_ASSUMPTION"}
         original_caps = set()
-
         for stmt in principal.policy_statements:
             if stmt.effect == "Allow":
                 for action in stmt.actions:
                     cap = classify_action(action)
-                    if cap:
+                    if cap and cap in SKIP_IF_ALREADY_HELD:
                         original_caps.add(cap)
 
         centrality = compute_escalation_centrality(paths)
@@ -49,8 +68,27 @@ def analyze_environment_data(principals):
 
             cap_class = capability_node.split("::")[1]
 
-            # Only skip if the user already has FULL ADMIN directly
-            if cap_class == "ADMINISTRATOR_ACCESS" and cap_class in original_caps:
+            # Skip only if this principal DIRECTLY holds this exact capability
+            # via its own managed policy AND no other principal can chain into it
+            # through an escalation path. We detect this as: path length == 2
+            # (principal → CAPABILITY directly, no action/role hops) AND the
+            # principal already has that capability classified from its actions.
+            # We do NOT skip it if another principal could reach it through this
+            # one (that case is handled when that other principal is analyzed).
+            if len(path) == 2 and path[0] == principal_name and cap_class in original_caps:
+                continue
+
+            # For roles with no callers (orphan roles): skip direct 2-hop paths.
+            # An orphan role holding AdministratorAccess is a configuration risk
+            # but NOT an exploitable escalation path — no attacker can reach it.
+            # It will still appear in findings when traversed FROM another principal.
+            if (len(path) == 2 and path[0] == principal_name
+                    and getattr(principal, "type", None) == "role"
+                    and principal_name not in inbound_principals):
+                continue
+
+            # Skip if the principal already directly holds this capability
+            if cap_class in original_caps:
                 continue
 
             valid_paths.append(path)
@@ -66,11 +104,39 @@ def analyze_environment_data(principals):
 
             cross_account = len(set(accounts)) > 1
 
+            # ── Condition key analysis ─────────────────────────────────────
+            # Walk every role in the path and collect trust conditions that
+            # apply to the step leading into that role.
+            condition_flags = {
+                "requires_mfa":         False,
+                "requires_external_id": False,
+                "condition_summary":    [],
+            }
+            for node in path:
+                p_obj = principals.get(node)
+                if not p_obj:
+                    continue
+                tc_map = getattr(p_obj, "trust_conditions", {}) or {}
+                for trusted_arn, tc in tc_map.items():
+                    if tc.requires_mfa:
+                        condition_flags["requires_mfa"] = True
+                        condition_flags["condition_summary"].append(
+                            f"{node}: MFA required"
+                        )
+                    if tc.requires_external_id:
+                        condition_flags["requires_external_id"] = True
+                        eid_str = f" ({tc.external_id_value})" if tc.external_id_value else ""
+                        condition_flags["condition_summary"].append(
+                            f"{node}: ExternalId{eid_str} required"
+                        )
+
             risk = compute_risk(
                 capability_class=cap_class,
                 path_length=len(path),
                 centrality_score=centrality_score,
-                cross_account=cross_account
+                cross_account=cross_account,
+                requires_mfa=condition_flags["requires_mfa"],
+                requires_external_id=condition_flags["requires_external_id"],
             )
 
             severity = classify_severity(risk)
@@ -79,16 +145,17 @@ def analyze_environment_data(principals):
             primary_pattern = pattern_list[0]
 
             finding = {
-                "principal": principal_name,
-                "account_id": principal.account_id,
-                "capability": cap_class,
-                "risk": risk,
-                "severity": severity,
-                "cross_account": cross_account,
-                "path": path,
-                "pattern": primary_pattern["pattern"],
-                "mitre": primary_pattern["mitre"],
-                "all_patterns": pattern_list
+                "principal":            principal_name,
+                "account_id":           principal.account_id,
+                "capability":           cap_class,
+                "risk":                 risk,
+                "severity":             severity,
+                "cross_account":        cross_account,
+                "path":                 path,
+                "pattern":              primary_pattern["pattern"],
+                "mitre":                primary_pattern["mitre"],
+                "all_patterns":         pattern_list,
+                "condition_flags":      condition_flags,
             }
 
             findings.append(finding)
@@ -111,7 +178,7 @@ def analyze_environment_data(principals):
     remediation_summary = {
         "total_paths": len(all_paths),
         "recommended_fixes": minimul_cut,
-        "dominators": dominators
+        "dominators": sorted(dominators) if dominators else []
     }
 
     return findings, criticality, remediation_summary

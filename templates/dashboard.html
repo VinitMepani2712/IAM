@@ -36,11 +36,42 @@
     <main class="main-content">
 
         <header class="top-bar">
-            <h1>IAM Risk Dashboard</h1>
+            <div>
+                <h1>IAM Risk Dashboard</h1>
+                <p style="color: var(--text-muted); margin-top: 6px;">
+                    Analysis complete &mdash; <strong style="color: white;">{{ total_principals }}</strong> principals
+                    scanned
+                </p>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <a href="/export/json" class="btn-export" title="Download findings as JSON">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Export JSON
+                </a>
+                <a href="/export/pdf" class="btn-export btn-export-pdf" title="Download PDF risk report">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                        <polyline points="10 9 9 9 8 9" />
+                    </svg>
+                    Export PDF
+                </a>
+            </div>
         </header>
 
         <!-- ================= STATS ================= -->
         <section class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Principals</h3>
+                <p class="stat-value">{{ total_principals }}</p>
+            </div>
+
             <div class="stat-card">
                 <h3>Total Findings</h3>
                 <p class="stat-value">{{ findings|length }}</p>
@@ -52,49 +83,82 @@
                     {{ findings | selectattr('severity', 'equalto', 'CRITICAL') | list | length }}
                 </p>
             </div>
+
+            <div class="stat-card">
+                <h3>Cross-Account</h3>
+                <p class="stat-value">
+                    {{ findings | selectattr('cross_account') | list | length }}
+                </p>
+            </div>
         </section>
 
+        <!-- ================= REMEDIATION ================= -->
         <section class="card remediation-card">
-        
+
             <div class="card-header">
                 <h2>🛠 Optimal Remediation Strategy</h2>
             </div>
-        
+
             <div class="remediation-summary">
-        
+
                 <div class="remediation-metrics">
                     <div>
                         <strong>Total Escalation Paths:</strong>
                         {{ remediation.total_paths }}
                     </div>
-        
+
                     <div>
                         <strong>Minimal Fix Set Size:</strong>
                         {{ remediation.recommended_fixes|length }}
                     </div>
                 </div>
-        
+
                 <div class="remediation-list">
                     <h4>Fix These to Eliminate Most Risk:</h4>
                     <ol>
                         {% for fix in remediation.recommended_fixes %}
-                        <li>{{ fix }}</li>
+                        <li><code>{{ fix }}</code></li>
                         {% endfor %}
                     </ol>
                 </div>
-        
+
+                {% if remediation.dominators %}
                 <div class="dominator-section">
-                    <h4>Structural Choke Points:</h4>
+                    <h4>Structural Choke Points (appear in every escalation path):</h4>
                     <ul>
                         {% for node in remediation.dominators %}
                         <li>{{ node }}</li>
                         {% endfor %}
                     </ul>
                 </div>
-        
+                {% endif %}
+
             </div>
-        
+
         </section>
+
+        <!-- ================= TOP CRITICAL NODES ================= -->
+        {% if top_critical %}
+        <section class="card">
+            <div class="card-header">
+                <h2>🔥 Top Critical Nodes</h2>
+            </div>
+            <div class="risk-leaderboard">
+                {% for node, score in top_critical %}
+                <div class="risk-row {% if loop.index <= 3 %}top-risk{% endif %}">
+                    <span class="risk-rank">#{{ loop.index }}</span>
+                    <span class="risk-name">{{ node }}</span>
+                    <div class="risk-bar-wrapper">
+                        <div class="risk-bar-bg">
+                            <div class="risk-bar-fill" style="width: {{ [score * 5, 100]|min }}%"></div>
+                        </div>
+                    </div>
+                    <span class="risk-score">{{ "%.2f"|format(score) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
 
         <!-- ================= GRAPH ================= -->
         <section class="card graph-card">
@@ -102,18 +166,78 @@
             <div class="card-header">
                 <h2>Attack Path Visualization</h2>
                 <div class="controls">
-                    <button onclick="showEscalation()" class="btn-tab active">Escalation Path</button>
-                    <button onclick="expandGraph()" class="btn-tab">Full Topology</button>
+                    <button onclick="showEscalation()" class="btn-tab active" id="btn-escalation">Escalation
+                        View</button>
+                    <button onclick="expandGraph()" class="btn-tab" id="btn-full">Full Topology</button>
+                    <button onclick="network.fit({animation:{duration:500,easingFunction:'easeInOutQuad'}})"
+                        class="btn-tab">⊞ Fit</button>
                     <button onclick="resetGraph()" class="btn-tab">Reset</button>
                 </div>
             </div>
 
-            <div class="graph-info">
-                Click a finding below to isolate and visualize its full privilege escalation chain.
+            <!-- Path selector -->
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
+                <label style="color:var(--text-muted);font-size:0.85rem;white-space:nowrap;">
+                    🔍 Isolate path:
+                </label>
+                <select id="pathSelector" onchange="selectPath(this.value)" style="flex:1; min-width:280px; max-width:560px;
+                           padding:8px 12px; border-radius:8px;
+                           background:#0b1220; border:1px solid var(--border);
+                           color:var(--text-main); font-size:0.85rem; cursor:pointer;">
+                    <option value="">— Show all escalation paths —</option>
+                </select>
+                <span id="pathCounter" style="color:var(--text-muted);font-size:0.82rem;white-space:nowrap;"></span>
+                <button onclick="clearPathSelection()" style="padding:7px 13px;border-radius:7px;border:1px solid var(--border);
+                           background:transparent;color:var(--text-muted);cursor:pointer;font-size:0.82rem;">
+                    ✕ Clear
+                </button>
             </div>
-            <br>
 
-            <div id="network"></div>
+            <!-- Graph canvas -->
+            <div style="position:relative;">
+                <div id="graphLoading" style="
+                    position:absolute; inset:0;
+                    background:rgba(11,18,32,0.88);
+                    display:flex; flex-direction:column;
+                    align-items:center; justify-content:center;
+                    border-radius:14px; z-index:10; gap:14px;">
+                    <div style="width:36px;height:36px;border:3px solid #334155;
+                        border-top-color:#3b82f6;border-radius:50%;
+                        animation:graphSpin 0.8s linear infinite;"></div>
+                    <span style="color:#94a3b8;font-size:0.88rem;">Building attack graph…</span>
+                </div>
+                <div id="network"></div>
+            </div>
+
+            <!-- Legend -->
+            <div
+                style="display:flex; flex-wrap:wrap; gap:18px; margin-top:14px; font-size:0.82rem; color:var(--text-muted);">
+                <span><span
+                        style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#3b82f6;margin-right:6px;vertical-align:middle;"></span>Principal</span>
+                <span><span
+                        style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#6366f1;margin-right:6px;vertical-align:middle;"></span>Action
+                    Node</span>
+                <span><span
+                        style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#22c55e;margin-right:6px;vertical-align:middle;"></span>Capability
+                    (target)</span>
+                <span><span
+                        style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#ef4444;margin-right:6px;vertical-align:middle;"></span>Top
+                    Critical Node</span>
+                <span><span
+                        style="display:inline-block;width:22px;height:3px;background:#facc15;border-radius:2px;margin-right:6px;vertical-align:middle;"></span>Escalation
+                    Path</span>
+                <span><span
+                        style="display:inline-block;width:22px;height:3px;background:#ef4444;border-radius:2px;margin-right:6px;vertical-align:middle;border-top:2px dashed #ef4444;"></span>Cross-Account
+                    Pivot</span>
+            </div>
+
+            <style>
+                @keyframes graphSpin {
+                    to {
+                        transform: rotate(360deg);
+                    }
+                }
+            </style>
 
         </section>
 
@@ -131,6 +255,7 @@
                 </div>
             </div>
 
+            {% if findings %}
             <table id="findingsTable">
                 <thead>
                     <tr>
@@ -140,11 +265,13 @@
                         <th>Severity</th>
                         <th>Pattern</th>
                         <th>MITRE</th>
+                        <th>Conditions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for f in findings %}
-                    <tr class="finding-row" data-path='{{ f.path | tojson | safe }}'>
+                    <tr class="finding-row" data-path='{{ f.path | tojson }}'
+                        data-conditions='{{ f.get("condition_flags", {}) | tojson }}'>
                         <td>{{ f.principal }}</td>
                         <td>{{ f.capability }}</td>
                         <td>
@@ -160,14 +287,69 @@
                         </td>
                         <td>{{ f.pattern }}</td>
                         <td>{{ f.mitre }}</td>
+                        <td>
+                            {% set cf = f.get('condition_flags', {}) %}
+                            {% if cf.get('requires_mfa') %}
+                            <span class="condition-badge condition-mfa"
+                                title="MFA required on this path — risk reduced">🔐 MFA</span>
+                            {% endif %}
+                            {% if cf.get('requires_external_id') %}
+                            <span class="condition-badge condition-extid" title="ExternalId required — risk reduced">🔑
+                                ExtID</span>
+                            {% endif %}
+                            {% if not cf.get('requires_mfa') and not cf.get('requires_external_id') %}
+                            <span style="color: var(--text-muted); font-size: 0.8rem;">—</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+            {% else %}
+            <div style="padding: 40px; text-align: center; color: var(--text-muted);">
+                ✅ No privilege escalation paths detected in this IAM configuration.
+            </div>
+            {% endif %}
 
         </section>
 
     </main>
+
+    <!-- ================= ATTACK PANEL ================= -->
+    <div id="attackPanel" class="attack-panel hidden">
+
+        <div class="panel-header">
+            <h3>🛡 Attack Investigation</h3>
+            <button onclick="closePanel()"
+                style="background:transparent; border:1px solid var(--border); color:white; padding:6px 12px; border-radius:6px; cursor:pointer;">✕
+                Close</button>
+        </div>
+
+        <div class="panel-content">
+
+            <div class="panel-section">
+                <h4>Attack Summary</h4>
+                <div id="attackSummary"></div>
+            </div>
+
+            <div class="panel-section">
+                <h4>How The Attack Works</h4>
+                <ol id="attackSteps"></ol>
+            </div>
+
+            <div class="panel-section">
+                <h4>Business Impact</h4>
+                <p id="attackImpact" style="white-space: pre-line;"></p>
+            </div>
+
+            <div class="panel-section">
+                <h4>Recommended Mitigation</h4>
+                <p id="attackMitigation" style="white-space: pre-line;"></p>
+            </div>
+
+        </div>
+
+    </div>
 
     <script>
         feather.replace();
@@ -178,45 +360,75 @@
         let nodes = new vis.DataSet(graphRaw.nodes);
         let edges = new vis.DataSet(graphRaw.edges);
 
-        /* ================= INITIAL NODE STYLING ================= */
+        /* ================= TOOLTIP HELPER ================= */
+        function makeTooltip(type, name) {
+            const div = document.createElement("div");
+            div.style.cssText = `
+                background: #1e293b;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-family: Inter, system-ui, sans-serif;
+                font-size: 12px;
+                color: #e2e8f0;
+                max-width: 240px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            `;
+            const label = document.createElement("div");
+            label.style.cssText = "font-weight:700; color:#94a3b8; font-size:10px; text-transform:uppercase; margin-bottom:4px;";
+            label.textContent = type;
+            const value = document.createElement("div");
+            value.style.cssText = "font-weight:600; word-break:break-all;";
+            value.textContent = name;
+            div.appendChild(label);
+            div.appendChild(value);
+            return div;
+        }
+
+        /* ================= NODE STYLING ================= */
         function applyBaseNodeStyles() {
             nodes.forEach(node => {
 
-                // Default Principal
+                // ── Principal (user/role) ──
                 node.shape = "dot";
-                node.size = 28;
-                node.color = {
-                    background: "#3b82f6",
-                    border: "#1e40af"
-                };
+                node.size = 26;
+                node.color = { background: "#3b82f6", border: "#1e40af" };
+                node.font = { color: "#ffffff", size: 13, strokeWidth: 3, strokeColor: "#0f172a" };
+                node.label = node.id.length > 22 ? node.id.slice(0, 20) + "…" : node.id;
+                node.title = makeTooltip("Principal", node.id);
 
-                // Capability
+                // ── Capability (end goal) ──
                 if (node.id.startsWith("CAPABILITY::")) {
+                    const cap = node.id.replace("CAPABILITY::", "");
                     node.shape = "star";
-                    node.size = 36;
-                    node.color = {
-                        background: "#22c55e",
-                        border: "#15803d"
-                    };
-                }
-
-                // Action
-                if (node.id.startsWith("ACTION::")) {
-                    node.shape = "box";
-                    node.size = 26;
-                    node.color = {
-                        background: "#6366f1",
-                        border: "#4338ca"
-                    };
-                }
-
-                // Critical Principal
-                if (topCritical.includes(node.id)) {
                     node.size = 38;
-                    node.color = {
-                        background: "#ef4444",
-                        border: "#991b1b"
-                    };
+                    node.color = { background: "#22c55e", border: "#15803d" };
+                    node.label = cap;
+                    node.font = { color: "#ffffff", size: 12, strokeWidth: 3, strokeColor: "#14532d" };
+                    node.title = makeTooltip("Capability", cap);
+                }
+
+                // ── Action (intermediate step) ──
+                if (node.id.startsWith("ACTION::")) {
+                    const parts = node.id.replace("ACTION::", "").split("::");
+                    const action = parts[0];
+                    const target = parts[1] ? parts[1].slice(0, 14) : "";
+                    node.shape = "box";
+                    node.size = 18;
+                    node.color = { background: "#6366f1", border: "#4338ca" };
+                    node.label = target ? `${action}\n→ ${target}` : action;
+                    node.font = { color: "#ffffff", size: 11, strokeWidth: 2, strokeColor: "#1e1b4b" };
+                    node.title = makeTooltip("Action", node.id.replace("ACTION::", ""));
+                    node.widthConstraint = { maximum: 160 };
+                }
+
+                // ── Top Critical ──
+                if (topCritical.includes(node.id)) {
+                    node.size = 42;
+                    node.color = { background: "#ef4444", border: "#991b1b" };
+                    node.font = { color: "#ffffff", size: 14, bold: true, strokeWidth: 3, strokeColor: "#450a0a" };
+                    node.title = makeTooltip("⚠ Top Critical", node.id);
+                    node.shadow = { enabled: true, color: "rgba(239,68,68,0.5)", size: 16 };
                 }
 
                 node.opacity = 1;
@@ -225,104 +437,148 @@
         }
 
         /* ================= NETWORK INIT ================= */
+
+        // Build path selector dropdown from findings
+        const allFindings = {{ findings | tojson }};
+        const selector = document.getElementById("pathSelector");
+        const counter = document.getElementById("pathCounter");
+        counter.textContent = `${allFindings.length} paths`;
+
+        allFindings.forEach((f, i) => {
+            const opt = document.createElement("option");
+            opt.value = i;
+            const steps = f.path.length - 1;
+            opt.textContent = `[${f.severity}] ${f.principal} → ${f.capability}  (${steps} hops)`;
+            opt.style.color = f.severity === "CRITICAL" ? "#ef4444"
+                : f.severity === "HIGH" ? "#f97316"
+                    : f.severity === "MEDIUM" ? "#eab308" : "#22c55e";
+            selector.appendChild(opt);
+        });
+
+        function selectPath(val) {
+            if (val === "") { clearPathSelection(); return; }
+            const f = allFindings[parseInt(val)];
+            if (f) {
+                showEscalation();
+                setTimeout(() => highlightPath(f.path), 100);
+            }
+        }
+
+        function clearPathSelection() {
+            selector.value = "";
+            showEscalation();
+        }
+
+        // Always use physics-based layout — never hierarchical
+        const networkOptions = {
+            layout: {
+                randomSeed: 2
+            },
+            physics: {
+                enabled: true,
+                solver: "barnesHut",
+                barnesHut: {
+                    gravitationalConstant: -8000,
+                    centralGravity: 0.3,
+                    springLength: 180,
+                    springConstant: 0.02,
+                    damping: 0.95,
+                    avoidOverlap: 0.5
+                },
+                stabilization: {
+                    enabled: true,
+                    iterations: 200,
+                    updateInterval: 50,
+                    fit: true
+                },
+                minVelocity: 0.75
+            },
+            interaction: {
+                hover: true,
+                navigationButtons: false,   // hide clunky nav buttons, use scroll/drag instead
+                tooltipDelay: 150,
+                zoomView: true,
+                dragView: true,
+                zoomSpeed: 0.5,             // slower zoom = easier to control
+                keyboard: { enabled: true, speed: { x: 10, y: 10, zoom: 0.02 } },
+                multiselect: false
+            },
+            nodes: {
+                font: {
+                    size: 13,
+                    color: "#ffffff",
+                    strokeWidth: 3,
+                    strokeColor: "#0f172a",
+                    face: "Inter, system-ui, sans-serif"
+                },
+                borderWidth: 2,
+                shadow: { enabled: true, color: "rgba(0,0,0,0.4)", size: 8, x: 2, y: 2 }
+            },
+            edges: {
+                arrows: { to: { enabled: true, scaleFactor: 0.6 } },
+                width: 2,
+                smooth: { type: "dynamic" },
+                color: { color: "#475569", highlight: "#facc15", hover: "#94a3b8" },
+                font: { size: 0 },
+                shadow: false
+            }
+        };
+
         const network = new vis.Network(
             document.getElementById("network"),
             { nodes, edges },
-            {
-                layout: {
-                    hierarchical: {
-                        enabled: true,
-                        direction: "LR",
-                        levelSeparation: 200,
-                        nodeSpacing: 140
-                    }
-                },
-                physics: false,
-                interaction: {
-                    hover: true,
-                    navigationButtons: true
-                },
-                nodes: {
-                    font: {
-                        size: 16,
-                        color: "#ffffff",
-                        strokeWidth: 3,
-                        strokeColor: "#0f172a"
-                    }
-                },
-                edges: {
-                    arrows: { to: { enabled: true } },
-                    width: 2,
-                    smooth: { type: "cubicBezier" },
-                    color: "#94a3b8",
-                    font: { size: 0 }
-                }
-            }
+            networkOptions
         );
 
         applyBaseNodeStyles();
 
+        // Hide loader after physics stabilizes, then lock positions
+        network.once("stabilizationIterationsDone", () => {
+            network.setOptions({ physics: { enabled: false } });
+            network.fit({ animation: { duration: 800, easingFunction: "easeInOutQuad" } });
+            const loader = document.getElementById("graphLoading");
+            if (loader) loader.style.display = "none";
+        });
+
         /* ================= HIGHLIGHT PATH ================= */
         function highlightPath(path) {
-
             applyBaseNodeStyles();
 
-            nodes.forEach(node => {
-                node.opacity = 0.15;
-                nodes.update(node);
-            });
-
-            edges.forEach(edge => {
-                edge.color = "#334155";
-                edge.width = 1;
-                edges.update(edge);
-            });
+            nodes.forEach(node => { node.opacity = 0.15; nodes.update(node); });
+            edges.forEach(edge => { edge.color = "#334155"; edge.width = 1; edges.update(edge); });
 
             for (let i = 0; i < path.length; i++) {
-
                 const node = nodes.get(path[i]);
-                if (node) {
-                    node.opacity = 1;
-                    node.size += 6;
-                    nodes.update(node);
-                }
+                if (node) { node.opacity = 1; node.size = (node.size || 28) + 6; nodes.update(node); }
 
                 if (i < path.length - 1) {
-                    const match = edges.get({
-                        filter: e => e.from === path[i] && e.to === path[i + 1]
-                    });
-
-                    match.forEach(edge => {
-                        edge.color = "#facc15";
-                        edge.width = 4;
-                        edges.update(edge);
-                    });
+                    const match = edges.get({ filter: e => e.from === path[i] && e.to === path[i + 1] });
+                    match.forEach(edge => { edge.color = "#facc15"; edge.width = 4; edges.update(edge); });
                 }
             }
-
             network.fit({ animation: true });
         }
 
         /* ================= TABLE CLICK ================= */
         document.querySelectorAll(".finding-row").forEach(row => {
-                row.addEventListener("click", function () {
-
-                    const path = JSON.parse(this.dataset.path);
-
-                    const finding = {
-                        principal: this.cells[0].innerText,
-                        capability: this.cells[1].innerText,
-                        risk: this.cells[2].innerText,
-                        severity: this.cells[3].innerText,
-                        pattern: this.cells[4].innerText,
-                        mitre: this.cells[5].innerText,
-                        path: path
-                    };
-
-                    highlightPath(path);
-                    openPanel(finding);
-                });
+            row.addEventListener("click", function () {
+                const path = JSON.parse(this.dataset.path);
+                const cf = this.dataset.conditions ? JSON.parse(this.dataset.conditions) : {};
+                const finding = {
+                    principal: this.cells[0].innerText,
+                    capability: this.cells[1].innerText,
+                    risk: this.cells[2].innerText,
+                    severity: this.cells[3].innerText,
+                    pattern: this.cells[4].innerText,
+                    mitre: this.cells[5].innerText,
+                    path: path,
+                    condition_flags: cf,
+                };
+                highlightPath(path);
+                openPanel(finding);
             });
+        });
+
         /* ================= FILTERS ================= */
         function filterSeverity(level) {
             document.querySelectorAll("#findingsTable tbody tr").forEach(row => {
@@ -339,246 +595,103 @@
             });
         });
 
-        /* ================= TOGGLES ================= */
+        /* ================= GRAPH TOGGLES ================= */
+        function reSpread() {
+            network.setOptions({ physics: { enabled: true } });
+            network.once("stabilizationIterationsDone", () => {
+                network.setOptions({ physics: { enabled: false } });
+                network.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" } });
+            });
+        }
+
         function expandGraph() {
-            nodes.clear();
-            edges.clear();
-            nodes.add(graphRaw.full_nodes);
-            edges.add(graphRaw.full_edges);
+            nodes.clear(); edges.clear();
+            nodes.add(graphRaw.full_nodes); edges.add(graphRaw.full_edges);
             applyBaseNodeStyles();
+            reSpread();
+            document.getElementById("btn-escalation").classList.remove("active");
+            document.getElementById("btn-full").classList.add("active");
         }
 
         function showEscalation() {
-            nodes.clear();
-            edges.clear();
-            nodes.add(graphRaw.nodes);
-            edges.add(graphRaw.edges);
+            nodes.clear(); edges.clear();
+            nodes.add(graphRaw.nodes); edges.add(graphRaw.edges);
             applyBaseNodeStyles();
+            reSpread();
+            document.getElementById("btn-full").classList.remove("active");
+            document.getElementById("btn-escalation").classList.add("active");
         }
 
-        function resetGraph() {
-            nodes.clear();
-            edges.clear();
-            nodes.add(graphRaw.nodes);
-            edges.add(graphRaw.edges);
-            applyBaseNodeStyles();
-        }
+        function resetGraph() { showEscalation(); }
 
-
+        /* ================= ATTACK PANEL ================= */
         function openPanel(finding) {
+            document.getElementById("attackPanel").classList.remove("hidden");
 
-                document.getElementById("attackPanel").classList.remove("hidden");
-
-                document.getElementById("attackSummary").innerHTML = `
-                    <strong>Initial Principal:</strong> ${finding.principal}<br>
-                    <strong>Final Capability:</strong> ${finding.capability}<br>
-                    <strong>Severity:</strong> ${finding.severity}<br>
-                    <strong>MITRE Technique:</strong> ${finding.mitre}
-                `;
-
-                generateAttackSteps(finding.path);
-                document.getElementById("attackImpact").innerText = generateImpact(finding);
-                document.getElementById("attackMitigation").innerText = generateMitigation(finding);
+            const cf = finding.condition_flags || {};
+            let conditionHtml = "";
+            if (cf.requires_mfa) {
+                conditionHtml += `<span class="condition-badge condition-mfa">🔐 MFA Required — risk reduced</span><br>`;
+            }
+            if (cf.requires_external_id) {
+                conditionHtml += `<span class="condition-badge condition-extid">🔑 ExternalId Required — risk reduced</span><br>`;
+            }
+            if (conditionHtml) {
+                conditionHtml = `<br><strong>Condition Protections:</strong><br>${conditionHtml}`;
             }
 
-            function closePanel() {
-                document.getElementById("attackPanel").classList.add("hidden");
+            document.getElementById("attackSummary").innerHTML = `
+                <strong>Initial Principal:</strong> ${finding.principal}<br>
+                <strong>Final Capability:</strong> ${finding.capability}<br>
+                <strong>Severity:</strong> ${finding.severity}<br>
+                <strong>MITRE Technique:</strong> ${finding.mitre}
+                ${conditionHtml}
+            `;
+            generateAttackSteps(finding.path);
+            document.getElementById("attackImpact").innerText = generateImpact(finding);
+            document.getElementById("attackMitigation").innerText = generateMitigation(finding);
+        }
+
+        function closePanel() {
+            document.getElementById("attackPanel").classList.add("hidden");
+        }
+
+        function generateAttackSteps(path) {
+            const list = document.getElementById("attackSteps");
+            list.innerHTML = "";
+            for (let i = 0; i < path.length - 1; i++) {
+                const li = document.createElement("li");
+                li.innerText = `${cleanName(path[i])} → ${cleanName(path[i + 1])}`;
+                list.appendChild(li);
             }
+        }
 
-            function generateAttackSteps(path) {
+        function cleanName(v) {
+            return v.replace("CAPABILITY::", "").replace("ACTION::", "").replace("ROLE::", "");
+        }
 
-                    const list = document.getElementById("attackSteps");
-                    list.innerHTML = "";
+        function generateImpact(finding) {
+            const p = finding.pattern, steps = finding.path.length;
+            if (p.includes("PASSROLE_COMPUTE_EXECUTION"))
+                return `The attacker can pass a privileged IAM role to a compute service (EC2/Lambda).\n\nThis enables:\n• Deployment of backdoor infrastructure\n• Data exfiltration via compute credentials\n• Persistent access bypassing user-level restrictions\n• Full cloud environment compromise`;
+            if (p.includes("CROSS_ACCOUNT_PIVOT"))
+                return `This escalation crosses AWS account boundaries.\n\nThis enables:\n• Lateral movement into other AWS accounts\n• Multi-account compromise\n• Bypassing account-level isolation controls\n• Significantly increased blast radius`;
+            if (p.includes("ROLE_ASSUMPTION_ABUSE"))
+                return `The attacker can assume a more privileged IAM role through trust policy abuse.\n\nThis enables:\n• Administrative access escalation\n• Cross-role privilege chaining\n• Access to sensitive AWS services`;
+            return `Multi-hop privilege escalation (${steps} steps) increasing effective permissions.\nLonger chains are harder to detect. Can lead to data exposure, service disruption, or infrastructure takeover.`;
+        }
 
-                    for (let i = 0; i < path.length - 1; i++) {
-
-                        let from = cleanName(path[i]);
-                        let to = cleanName(path[i + 1]);
-
-                        const li = document.createElement("li");
-
-                        li.innerText = `The attacker moves from "${from}" to "${to}" by abusing existing IAM permissions.`;
-
-                        list.appendChild(li);
-                    }
-                }
-
-                function cleanName(value) {
-                    return value.replace("CAPABILITY::", "")
-                        .replace("ACTION::", "")
-                        .replace("ROLE::", "");
-                }
-
-                function generateImpact(finding) {
-
-                            const capability = finding.capability;
-                            const pattern = finding.pattern;
-                            const steps = finding.path.length;
-
-                            let impact = "";
-
-                            if (pattern.includes("PASSROLE_COMPUTE_EXECUTION")) {
-
-                                impact = `
-                                    The attacker can pass a privileged IAM role to a compute service.
-                                    Once attached, the compute instance executes with elevated permissions.
-
-                                    This enables:
-                                    • Deployment of backdoor infrastructure
-                                    • Data exfiltration via EC2 or Lambda
-                                    • Persistent access through instance credentials
-                                    • Bypassing user-level restrictions
-
-                                    This is a high-risk privilege escalation vector commonly used for cloud takeover.
-                                    `;
-
-                            } else if (pattern.includes("ROLE_ASSUMPTION_ABUSE")) {
-
-                                impact = `
-                                    The attacker can assume a more privileged IAM role through trust policy abuse.
-
-                                    This enables:
-                                    • Administrative access escalation
-                                    • Cross-role privilege chaining
-                                    • Access to sensitive AWS services
-                                    • Expansion of access across environments
-
-                                    If the assumed role has admin privileges, this can lead to full account compromise.
-                                    `;
-
-                            } else if (pattern.includes("POLICY_MANIPULATION")) {
-
-                                impact = `
-                                    The attacker can modify or attach IAM policies.
-
-                                    This enables:
-                                    • Self-granting administrative privileges
-                                    • Attaching full-access policies
-                                    • Creating backdoor roles
-                                    • Removing logging or detection policies
-
-                                    Policy manipulation often results in stealthy, long-term cloud compromise.
-                                    `;
-
-                            } else if (pattern.includes("CROSS_ACCOUNT_PIVOT")) {
-
-                                impact = `
-                                    This escalation crosses account boundaries.
-
-                                    This enables:
-                                    • Lateral movement into other AWS accounts
-                                    • Breach expansion across environments
-                                    • Multi-account compromise
-                                    • Bypassing account-level isolation
-
-                                    Cross-account pivots significantly increase blast radius.
-                                    `;
-
-                            } else {
-
-                                impact = `
-                                    This privilege escalation path increases the attacker's effective permissions
-                                    through multi-hop IAM trust relationships.
-
-                                    The longer the chain (${steps} steps), the more complex and stealthy the escalation,
-                                    making detection more difficult.
-
-                                    This can ultimately lead to data exposure, service disruption, or infrastructure control.
-                                    `;
-                            }
-
-                            return impact.trim();
-                        }
-
-                function generateMitigation(finding) {
-
-                        const pattern = finding.pattern;
-                        const capability = finding.capability;
-
-                        let mitigation = "";
-
-                        if (pattern.includes("PASSROLE")) {
-
-                            mitigation = `
-                                • Restrict iam:PassRole to explicitly approved roles only.
-                                • Avoid wildcard role passing.
-                                • Implement IAM permission boundaries.
-                                • Monitor role attachment events via CloudTrail.
-                                `;
-
-                        } else if (pattern.includes("ASSUME")) {
-
-                            mitigation = `
-                                • Tighten IAM role trust policies.
-                                • Remove unnecessary cross-account trust relationships.
-                                • Enforce MFA for role assumption.
-                                • Apply least-privilege role design.
-                                `;
-
-                        } else if (pattern.includes("POLICY")) {
-
-                            mitigation = `
-                                • Restrict iam:AttachRolePolicy and iam:PutRolePolicy.
-                                • Prevent self-attachment of administrative policies.
-                                • Enable AWS Config to monitor policy changes.
-                                • Enforce separation of duties.
-                                `;
-
-                        } else if (pattern.includes("CROSS_ACCOUNT")) {
-
-                            mitigation = `
-                                • Audit cross-account trust relationships.
-                                • Require external ID conditions.
-                                • Limit account-to-account IAM trust.
-                                • Implement SCPs (Service Control Policies).
-                                `;
-
-                        } else {
-
-                            mitigation = `
-                                • Review IAM policies for wildcard permissions.
-                                • Remove excessive privileges.
-                                • Apply least privilege principles.
-                                • Enable continuous IAM posture monitoring.
-                                `;
-                                                        }
-
-                        return mitigation.trim();
-                    }
+        function generateMitigation(finding) {
+            const p = finding.pattern;
+            if (p.includes("PASSROLE"))
+                return `• Restrict iam:PassRole to explicitly approved roles only\n• Avoid wildcard role passing (*)\n• Implement IAM permission boundaries\n• Monitor role attachment events via CloudTrail`;
+            if (p.includes("CROSS_ACCOUNT"))
+                return `• Audit all cross-account trust relationships\n• Require sts:ExternalId conditions\n• Implement Service Control Policies (SCPs)\n• Limit account-to-account IAM trust`;
+            if (p.includes("ASSUME"))
+                return `• Tighten IAM role trust policies\n• Remove unnecessary AssumeRole permissions\n• Enforce MFA conditions for role assumption\n• Apply least-privilege role design`;
+            return `• Review IAM policies for wildcard permissions\n• Remove excessive privileges\n• Apply least privilege principles\n• Enable continuous IAM posture monitoring`;
+        }
     </script>
-
-    <div id="attackPanel" class="attack-panel hidden">
-    
-        <div class="panel-header">
-            <h3>🛡 Attack Investigation</h3>
-            <button onclick="closePanel()">✕</button>
-        </div>
-    
-        <div class="panel-content">
-    
-            <div class="panel-section">
-                <h4>Attack Summary</h4>
-                <div id="attackSummary"></div>
-            </div>
-    
-            <div class="panel-section">
-                <h4>How The Attack Works</h4>
-                <ol id="attackSteps"></ol>
-            </div>
-    
-            <div class="panel-section">
-                <h4>Business Impact</h4>
-                <p id="attackImpact"></p>
-            </div>
-    
-            <div class="panel-section">
-                <h4>Recommended Mitigation</h4>
-                <p id="attackMitigation"></p>
-            </div>
-    
-        </div>
-    
-    </div>
 
 </body>
 

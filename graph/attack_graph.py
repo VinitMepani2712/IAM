@@ -16,7 +16,8 @@ class AttackGraph:
     def add_edge(self, from_node, to_node):
         self.add_node(from_node)
         self.add_node(to_node)
-        self.adjacency_list[from_node].append(to_node)
+        if to_node not in self.adjacency_list[from_node]:  # prevent duplicate edges
+            self.adjacency_list[from_node].append(to_node)
 
     def neighbors(self, node):
         return self.adjacency_list.get(node, [])
@@ -24,7 +25,7 @@ class AttackGraph:
     adjacency = property(lambda self: self.adjacency_list)
 
 
-# ARN parsing
+# ── ARN parsing ───────────────────────────────────────────────────────────────
 ARN_ROLE_RE = re.compile(r":role\/([^\/]+)$")
 ARN_USER_RE = re.compile(r":user\/([^\/]+)$")
 
@@ -73,99 +74,169 @@ def _has_action(actions: set, prefix: str):
     return service in actions or "*" in actions
 
 
-def _capability_node(name: str):
+def _cap(name: str):
     return f"CAPABILITY::{name}"
 
 
-def _action_node(action: str, target: str = None):
+def _anode(action: str, target: str = None):
     return f"ACTION::{action}::{target}" if target else f"ACTION::{action}"
 
 
 def build_attack_graph(principals: dict):
 
     g = AttackGraph()
-    for name, p in principals.items():
-        if getattr(p, "type", None) == "role":
-            print("\nROLE:", name)
-            print("DIR:", dir(p))
-            print("DICT:", p.__dict__)
-            
-    # Collect trust relationships
+
+    # ── Collect trust relationships ───────────────────────────────────────────
     role_trust_allows = defaultdict(set)
     for name, p in principals.items():
         if getattr(p, "type", None) == "role":
             for t in getattr(p, "trusts", set()) or set():
-                role_trust_allows[name].add(_normalize_principal_token(t))
+                normalized = _normalize_principal_token(t)
+                if normalized:
+                    role_trust_allows[name].add(normalized)
 
-    # Add principal nodes
+    # ── Add all principal nodes ───────────────────────────────────────────────
     for name in principals.keys():
         g.add_node(name)
 
-    # AssumeRole edge builder
+    # ── AssumeRole edge builder (respects trust policy) ───────────────────────
     def add_assume_edge(caller: str, target_role: str):
         allowed = role_trust_allows.get(target_role, set())
         if allowed and caller not in allowed:
             return
-        action_node = _action_node("sts:AssumeRole", target_role)
+        action_node = _anode("sts:AssumeRole", target_role)
         g.add_edge(caller, action_node)
         g.add_edge(action_node, target_role)
 
-    # Parse policy statements
+    # ── Parse policy statements ───────────────────────────────────────────────
+    # Pre-build per-principal deny sets for fast lookup
+    principal_denies = defaultdict(set)
+    for name, p in principals.items():
+        for stmt in getattr(p, "policy_statements", []) or []:
+            if getattr(stmt, "effect", "") == "Deny":
+                for action in _actions(stmt):
+                    for resource in _resources(stmt):
+                        principal_denies[name].add((action.lower(), resource))
+
+    def _is_denied(caller: str, action: str, resource: str) -> bool:
+        """Return True if an explicit Deny covers this action+resource."""
+        denies = principal_denies.get(caller, set())
+        action_l = action.lower()
+        for (deny_action, deny_resource) in denies:
+            action_match = (deny_action == action_l or deny_action == "*" or
+                            deny_action == action_l.split(":")[0] + ":*")
+            resource_match = (deny_resource == "*" or deny_resource == resource)
+            if action_match and resource_match:
+                return True
+        return False
+
     for name, p in principals.items():
         for stmt in getattr(p, "policy_statements", []) or []:
             if getattr(stmt, "effect", "Deny") != "Allow":
                 continue
 
-            actions = _actions(stmt)
+            actions   = _actions(stmt)
             resources = _resources(stmt)
 
-            # sts:AssumeRole
-            if _has_action(actions, "sts:AssumeRole"):
+            # ── sts:AssumeRole ────────────────────────────────────────────────
+            if _has_action(actions, "sts:AssumeRole") or \
+               _has_action(actions, "sts:AssumeRoleWithWebIdentity"):
                 for r in resources:
                     if r == "*":
                         for role_name in role_trust_allows.keys():
-                            add_assume_edge(name, role_name)
+                            role_arn = getattr(principals.get(role_name), "arn", role_name) or role_name
+                            if not _is_denied(name, "sts:AssumeRole", role_arn):
+                                add_assume_edge(name, role_name)
                     else:
                         rn = _role_name_from_arn(r) or r
                         if rn in principals and getattr(principals[rn], "type", None) == "role":
-                            add_assume_edge(name, rn)
+                            if not _is_denied(name, "sts:AssumeRole", r):
+                                add_assume_edge(name, rn)
 
-            # PassRole + EC2
+            # ── PassRole + EC2 ────────────────────────────────────────────────
             if _has_action(actions, "iam:PassRole") and _has_action(actions, "ec2:RunInstances"):
-                a = _action_node("iam:PassRole+ec2:RunInstances")
+                a = _anode("iam:PassRole+ec2:RunInstances")
                 g.add_edge(name, a)
-                g.add_edge(a, _capability_node("COMPUTE_LAUNCH"))
+                g.add_edge(a, _cap("COMPUTE_LAUNCH"))
 
-            # PassRole + Lambda
+            # ── PassRole + Lambda ─────────────────────────────────────────────
             if _has_action(actions, "iam:PassRole") and _has_action(actions, "lambda:CreateFunction"):
-                a = _action_node("iam:PassRole+lambda:CreateFunction")
+                a = _anode("iam:PassRole+lambda:CreateFunction")
                 g.add_edge(name, a)
-                g.add_edge(a, _capability_node("COMPUTE_LAUNCH"))
+                g.add_edge(a, _cap("COMPUTE_LAUNCH"))
 
-            # Wildcard IAM privilege
+            # ── Policy modification (role) ────────────────────────────────────
+            for pol_action in ["iam:AttachRolePolicy", "iam:PutRolePolicy"]:
+                if _has_action(actions, pol_action):
+                    a = _anode(pol_action)
+                    g.add_edge(name, a)
+                    g.add_edge(a, _cap("POLICY_MODIFICATION"))
+
+            # ── Policy modification (user) — NEW ──────────────────────────────
+            for pol_action in ["iam:AttachUserPolicy", "iam:PutUserPolicy"]:
+                if _has_action(actions, pol_action):
+                    a = _anode(pol_action)
+                    g.add_edge(name, a)
+                    g.add_edge(a, _cap("POLICY_MODIFICATION"))
+
+            # ── Access key persistence ────────────────────────────────────────
+            if _has_action(actions, "iam:CreateAccessKey"):
+                a = _anode("iam:CreateAccessKey")
+                g.add_edge(name, a)
+                g.add_edge(a, _cap("ACCESS_KEY_PERSISTENCE"))
+
+            # ── Console access takeover — NEW ─────────────────────────────────
+            # CreateLoginProfile: create a console password for another user
+            # UpdateLoginProfile: reset another user's console password
+            for login_action in ["iam:CreateLoginProfile", "iam:UpdateLoginProfile"]:
+                if _has_action(actions, login_action):
+                    a = _anode(login_action)
+                    g.add_edge(name, a)
+                    g.add_edge(a, _cap("CONSOLE_ACCESS"))
+
+            # ── Identity creation — NEW ───────────────────────────────────────
+            if _has_action(actions, "iam:CreateUser"):
+                a = _anode("iam:CreateUser")
+                g.add_edge(name, a)
+                g.add_edge(a, _cap("IDENTITY_CREATION"))
+
+            # ── Wildcard IAM privilege ────────────────────────────────────────
             if "iam:*" in actions or "*" in actions:
-                g.add_edge(name, _capability_node("PRIVILEGE_PROPAGATION"))
+                g.add_edge(name, _cap("PRIVILEGE_PROPAGATION"))
+                # Wildcard also implies console access and key creation
+                g.add_edge(name, _cap("CONSOLE_ACCESS"))
+                g.add_edge(name, _cap("ACCESS_KEY_PERSISTENCE"))
 
-    # Attached managed policy detection
+            # ── Low-impact read / recon capabilities ──────────────────────────
+            for read_action, cap_name in [
+                ("s3:GetObject",                "DATA_READ"),
+                ("s3:ListBucket",               "DATA_READ"),
+                ("logs:GetLogEvents",           "LOG_ACCESS"),
+                ("logs:DescribeLogGroups",       "LOG_ACCESS"),
+                ("cloudtrail:LookupEvents",      "AUDIT_READ"),
+                ("iam:ListRoles",               "RECON"),
+                ("iam:GetRole",                 "RECON"),
+                ("iam:SimulatePrincipalPolicy",  "RECON"),
+            ]:
+                if _has_action(actions, read_action):
+                    a = _anode(read_action)
+                    g.add_edge(name, a)
+                    g.add_edge(a, _cap(cap_name))
+
+    # ── Attached managed policy detection ─────────────────────────────────────
     for name, p in principals.items():
         if getattr(p, "type", None) != "role":
             continue
 
         policies = []
-
-        # parsed model format
-        if hasattr(p, "attached_managed_policies") and p.attached_managed_policies:
-            policies.extend(p.attached_managed_policies)
-
-        if hasattr(p, "raw_attached_managed_policies") and p.raw_attached_managed_policies:
-            policies.extend(p.raw_attached_managed_policies)
-
-        # direct AWS JSON format
-        if hasattr(p, "AttachedManagedPolicies") and p.AttachedManagedPolicies:
-            policies.extend(p.AttachedManagedPolicies)
+        for attr in ("attached_managed_policies", "raw_attached_managed_policies",
+                     "AttachedManagedPolicies"):
+            val = getattr(p, attr, None)
+            if val:
+                policies.extend(val)
 
         if any(pol.get("PolicyName") == "AdministratorAccess" for pol in policies):
-            g.add_edge(name, _capability_node("FULL_ADMIN"))
-            g.add_edge(name, _capability_node("PRIVILEGE_PROPAGATION"))
+            g.add_edge(name, _cap("FULL_ADMIN"))
+            g.add_edge(name, _cap("PRIVILEGE_PROPAGATION"))
 
     return g
