@@ -70,6 +70,26 @@ def sev_bg(s):
     return {"CRITICAL": RED_LT, "HIGH": ORANGE_LT,
             "MEDIUM": YELLOW_LT, "LOW": GREEN_LT}.get(s, OFF_WHITE)
 
+def compute_risk_grade(findings):
+    """
+    Return (score 0-100, letter grade, label, color) for the overall risk posture.
+    Weights: CRITICAL=25, HIGH=10, MEDIUM=3, LOW=1, capped at 100.
+    """
+    critical = sum(1 for f in findings if f.get("severity") == "CRITICAL")
+    high     = sum(1 for f in findings if f.get("severity") == "HIGH")
+    medium   = sum(1 for f in findings if f.get("severity") == "MEDIUM")
+    low      = sum(1 for f in findings if f.get("severity") == "LOW")
+    score    = min(100, critical * 25 + high * 10 + medium * 3 + low)
+    if score >= 80:
+        return score, "F", "Critical Risk",   RED
+    if score >= 60:
+        return score, "D", "Very High Risk",  ORANGE
+    if score >= 40:
+        return score, "C", "High Risk",       YELLOW
+    if score >= 20:
+        return score, "B", "Moderate Risk",   BLUE
+    return score, "A", "Low Risk", GREEN
+
 def strip_prefix(n):
     """Remove internal graph prefixes for display."""
     return (n.replace("CAPABILITY::", "")
@@ -259,34 +279,63 @@ def build_cover(findings, criticality, remediation, total_principals):
     top_pat  = (patterns.most_common(1)[0][0].replace("_", " ")
                 if patterns else "N/A")
 
+    risk_score, risk_grade, risk_label, risk_color = compute_risk_grade(findings)
+
     els = []
 
-    # ── Hero block ────────────────────────────────────────────────────────────
-    hero_rows = [
-        [Paragraph(
+    # ── Hero block (title left, risk grade right) ─────────────────────────────
+    title_col = [
+        Paragraph(
             "IAM Risk Intelligence Report",
-            ParagraphStyle("_ht", fontName="Helvetica-Bold", fontSize=26,
-                           textColor=WHITE, leading=32, spaceAfter=6))],
-        [Paragraph(
+            ParagraphStyle("_ht", fontName="Helvetica-Bold", fontSize=22,
+                           textColor=WHITE, leading=28, spaceAfter=6)),
+        Paragraph(
             "Privilege Escalation and Attack Surface Analysis",
-            ParagraphStyle("_hs", fontName="Helvetica", fontSize=12,
-                           textColor=MUTED, leading=18, spaceAfter=4))],
-        [Paragraph(
+            ParagraphStyle("_hs", fontName="Helvetica", fontSize=11,
+                           textColor=MUTED, leading=17, spaceAfter=4)),
+        Paragraph(
             f"Generated: {GEN_TS}",
-            ParagraphStyle("_hd", fontName="Helvetica", fontSize=9,
-                           textColor=MUTED, leading=14))],
+            ParagraphStyle("_hd", fontName="Helvetica", fontSize=8.5,
+                           textColor=MUTED, leading=13)),
     ]
-    els.append(Table(
-        hero_rows, colWidths=[CW],
+    grade_col = Table(
+        [
+            [Paragraph(risk_grade,
+                       ParagraphStyle("_gr", fontName="Helvetica-Bold",
+                                      fontSize=48, textColor=risk_color,
+                                      alignment=TA_CENTER, leading=54))],
+            [Paragraph(risk_label,
+                       ParagraphStyle("_gl", fontName="Helvetica-Bold",
+                                      fontSize=8, textColor=risk_color,
+                                      alignment=TA_CENTER, leading=12))],
+            [Paragraph(f"Score: {risk_score}/100",
+                       ParagraphStyle("_gs", fontName="Helvetica",
+                                      fontSize=7.5, textColor=MUTED,
+                                      alignment=TA_CENTER, leading=12))],
+        ],
+        colWidths=[3.2 * cm],
+        style=TableStyle([
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ]),
+    )
+    hero_table = Table(
+        [[title_col, grade_col]],
+        colWidths=[CW - 3.6 * cm, 3.6 * cm],
         style=TableStyle([
             ("BACKGROUND",    (0, 0), (-1, -1), NAVY),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 24),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 24),
-            ("TOPPADDING",    (0, 0), (-1, -1), 28),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 28),
+            ("LEFTPADDING",   (0, 0), (0,  -1), 24),
+            ("RIGHTPADDING",  (0, 0), (0,  -1), 12),
+            ("LEFTPADDING",   (1, 0), (1,  -1), 6),
+            ("RIGHTPADDING",  (1, 0), (1,  -1), 18),
+            ("TOPPADDING",    (0, 0), (-1, -1), 26),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 26),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
             ("ROUNDEDCORNERS", [8]),
         ]),
-    ))
+    )
+    els.append(hero_table)
     els.append(Spacer(1, 0.4 * cm))
 
     # ── 6 stat cards ─────────────────────────────────────────────────────────
@@ -381,6 +430,9 @@ def build_cover(findings, criticality, remediation, total_principals):
     # ── Scope summary table ───────────────────────────────────────────────────
     scope_data = [
         [th("Metric", TA_LEFT),            th("Value", TA_LEFT)],
+        [td("Overall Risk Grade",          bold=True),
+         td(f"{risk_grade}  —  {risk_label}  (score {risk_score}/100)",
+            bold=True, textColor=risk_color)],
         [td("Total Principals Scanned",    bold=True),
          td(str(total_principals),         bold=True, textColor=BLUE)],
         [td("Principals with Escalation Paths", bold=True),
@@ -585,44 +637,32 @@ def build_remediation(remediation):
         style(fontSize=9, textColor=TEXT_SOFT, leading=14)))
     els.append(Spacer(1, 0.12 * cm))
 
-    def action_for(src, dst):
-        s, d = src.lower(), dst.lower()
-        if "passrole" in s or "passrole" in d:
-            return "Restrict iam:PassRole to specific approved role ARNs"
-        if "assumerole" in s or "assumerole" in d:
-            return "Tighten role trust policy — remove unnecessary principals"
-        if "attachrolepolicy" in d or "putrolepolicy" in d:
-            return "Remove IAM policy modification permissions from this role"
-        if "createaccesskey" in d:
-            return "Remove iam:CreateAccessKey from this principal"
-        if "createloginprofile" in d:
-            return "Remove iam:CreateLoginProfile permission"
-        if "full_admin" in d or "administratoraccess" in d:
-            return "Detach AdministratorAccess managed policy"
-        if "privilege_propagation" in d:
-            return "Remove wildcard IAM permission (iam:* or *)"
-        return "Remove or restrict this IAM permission edge"
+    from analysis.remediation_cli import generate_cli_fixes
+    cli_fixes = generate_cli_fixes(fixes)
 
     fix_rows = [
-        [th("#"), th("Source Node", TA_LEFT),
-         th("Target Node", TA_LEFT), th("Action Required", TA_LEFT)]
+        [th("No.", TA_CENTER), th("Source Node", TA_LEFT),
+         th("Target Node", TA_LEFT), th("Action Required", TA_LEFT),
+         th("AWS CLI", TA_LEFT)]
     ]
-    for i, fix in enumerate(fixes, 1):
-        if isinstance(fix, (list, tuple)) and len(fix) == 2:
-            src, dst = str(fix[0]), str(fix[1])
-        elif isinstance(fix, str) and " -> " in fix:
-            src, dst = fix.split(" -> ", 1)
-        else:
-            src, dst = str(fix), ""
+    for i, cf in enumerate(cli_fixes, 1):
+        src = str(cf["edge"][0])
+        dst = str(cf["edge"][1]) if len(cf["edge"]) > 1 else ""
+        # First non-comment CLI line for compact display
+        cli_line = next(
+            (ln.strip() for ln in cf["cli"].splitlines() if ln.strip() and not ln.strip().startswith("#")),
+            cf["cli"].splitlines()[0].strip(),
+        )
         fix_rows.append([
             td(str(i), alignment=TA_CENTER, textColor=MUTED, bold=True),
-            td(strip_prefix(src), mono=True, fontSize=7.5),
-            td(strip_prefix(dst), mono=True, fontSize=7.5),
-            td(action_for(src, dst), fontSize=8, textColor=TEXT_SOFT),
+            td(strip_prefix(src), mono=True, fontSize=6.5),
+            td(strip_prefix(dst), mono=True, fontSize=6.5),
+            td(cf["description"], fontSize=7.5, textColor=TEXT_SOFT),
+            td(cli_line, mono=True, fontSize=6, textColor=PURPLE),
         ])
     els.append(Table(
         fix_rows,
-        colWidths=[0.8 * cm, 4.5 * cm, 4.5 * cm, 6.5 * cm],
+        colWidths=[0.9 * cm, 3.3 * cm, 3.3 * cm, 5.0 * cm, 3.8 * cm],
         style=striped_ts(len(fix_rows) - 1),
         repeatRows=1,
     ))
@@ -646,10 +686,10 @@ def build_findings(findings):
 
     # Column widths (must sum to CW ~= 451 pt)
     # #   | Principal | Capability | Severity | Risk | Pattern | Path
-    col_w = [0.65*cm, 2.9*cm, 2.6*cm, 1.75*cm, 0.9*cm, 2.9*cm, 4.6*cm]
+    col_w = [0.70*cm, 2.9*cm, 2.6*cm, 1.75*cm, 0.9*cm, 2.9*cm, 4.6*cm]
 
     rows = [[
-        th("#"),
+        th("No.",             TA_CENTER),
         th("Principal",       TA_LEFT),
         th("Capability",      TA_LEFT),
         th("Severity"),

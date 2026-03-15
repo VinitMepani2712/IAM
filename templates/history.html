@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan History — IAM Defender</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+    <script src="https://unpkg.com/feather-icons"></script>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="brand">
+            <i data-feather="shield"></i>
+            <span>IAM Defender</span>
+        </div>
+
+        <div class="nav-label">Navigation</div>
+
+        <a class="nav-item" href="/">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+            </svg>
+            Upload &amp; Analyze
+        </a>
+
+        <a class="nav-item" href="/dashboard">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3" />
+            </svg>
+            Dashboard
+        </a>
+
+        <a class="nav-item active" href="/history-page">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Scan History
+        </a>
+    </aside>
+
+    <main class="main-content">
+
+        <header class="top-bar">
+            <div>
+                <h1>Scan History</h1>
+                <p style="color: var(--text-muted); margin-top: 6px;">
+                    All past IAM scans &mdash;
+                    <strong style="color: white;">{{ scans|length }}</strong> record{{ 's' if scans|length != 1 else '' }}
+                </p>
+            </div>
+            <a href="/" class="btn-export" title="Run a new scan">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M12 5v14M5 12h14"/>
+                </svg>
+                New Scan
+            </a>
+        </header>
+
+        {% if scans %}
+        <section class="card table-wrapper">
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th style="width:50px">#</th>
+                        <th>Date</th>
+                        <th>File</th>
+                        <th style="text-align:center">Principals</th>
+                        <th style="text-align:center">Findings</th>
+                        <th style="text-align:center">Critical</th>
+                        <th style="text-align:center">High</th>
+                        <th style="text-align:center">Med</th>
+                        <th style="text-align:center">Low</th>
+                        <th style="text-align:center">Exports</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in scans %}
+                    <tr class="history-row">
+                        <td style="color:var(--text-muted);font-size:0.8rem;">{{ s.id }}</td>
+                        <td style="font-size:0.82rem;color:var(--text-muted);">{{ s.created_at }}</td>
+                        <td>
+                            <span style="font-weight:600;color:var(--text-main);">{{ s.filename }}</span>
+                        </td>
+                        <td style="text-align:center;">{{ s.total_principals }}</td>
+                        <td style="text-align:center;font-weight:700;">{{ s.total_findings }}</td>
+                        <td style="text-align:center;">
+                            {% if s.critical > 0 %}
+                            <span class="severity-pill severity-critical">{{ s.critical }}</span>
+                            {% else %}
+                            <span style="color:var(--text-muted);">—</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if s.high > 0 %}
+                            <span class="severity-pill severity-high">{{ s.high }}</span>
+                            {% else %}
+                            <span style="color:var(--text-muted);">—</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if s.medium > 0 %}
+                            <span class="severity-pill severity-medium">{{ s.medium }}</span>
+                            {% else %}
+                            <span style="color:var(--text-muted);">—</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if s.low > 0 %}
+                            <span class="severity-pill severity-low">{{ s.low }}</span>
+                            {% else %}
+                            <span style="color:var(--text-muted);">—</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            <div style="display:flex;gap:6px;justify-content:center;">
+                                <a href="/export/json?scan_id={{ s.id }}"
+                                   class="btn-export" style="padding:4px 10px;font-size:0.72rem;"
+                                   title="Download JSON for this scan">JSON</a>
+                                <a href="/export/pdf?scan_id={{ s.id }}"
+                                   class="btn-export btn-export-pdf" style="padding:4px 10px;font-size:0.72rem;"
+                                   title="Download PDF for this scan">PDF</a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        {% else %}
+        <section class="card">
+            <div style="padding: 60px; text-align: center; color: var(--text-muted);">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                    stroke="currentColor" style="width:48px;height:48px;margin:0 auto 16px;display:block;color:#334155;">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p style="font-size:1rem;margin-bottom:8px;">No scans yet.</p>
+                <p style="font-size:0.85rem;">
+                    <a href="/" style="color:#3b82f6;">Upload an IAM file</a> to run your first analysis.
+                </p>
+            </div>
+        </section>
+        {% endif %}
+
+    </main>
+
+    <script>feather.replace();</script>
+</body>
+</html>

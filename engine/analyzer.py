@@ -1,3 +1,5 @@
+import logging
+
 from analysis.criticality import compute_node_criticality
 from core.privilege_model import classify_action
 from analysis.risk_model import compute_risk, classify_severity
@@ -9,14 +11,18 @@ from analysis.dominator import compute_dominators
 from graph.attack_graph import build_attack_graph
 from graph.reachability import find_all_escalation_paths
 
+log = logging.getLogger(__name__)
 
-# ============================================================
-# 🔎 Full Environment Analysis (Web Safe)
-# ============================================================
+
+# =========
+# Full Environment Analysis (Web Safe)
+# =========
 
 def analyze_environment_data(principals):
 
+    log.info("Starting environment analysis — %d principals", len(principals))
     graph = build_attack_graph(principals)
+    log.debug("Attack graph built — %d nodes", len(graph.nodes))
 
     # ── Pre-compute which principals are reachable FROM other principals ──────
     # A principal is "an attacker entry point" if at least one OTHER principal
@@ -181,12 +187,17 @@ def analyze_environment_data(principals):
         "dominators": sorted(dominators) if dominators else []
     }
 
+    log.info(
+        "Analysis complete — %d findings (%d critical)",
+        len(findings),
+        sum(1 for f in findings if f.get("severity") == "CRITICAL"),
+    )
     return findings, criticality, remediation_summary
 
 
-# ============================================================
+# =========
 # 📊 Extract Graph Data (with Cross-Account Visualization)
-# ============================================================
+# =========
 
 def extract_graph_data(graph, findings=None, escalation_only=False, root=None):
 
@@ -215,13 +226,7 @@ def extract_graph_data(graph, findings=None, escalation_only=False, root=None):
                     src = path[i]
                     dst = path[i + 1]
 
-                    if src in graph.nodes and dst in graph.nodes:
-                        if src in graph.adjacency:
-                            if src in graph.nodes and dst in graph.nodes:
-                                if src in graph.nodes and dst in graph.nodes:
-                                    pass
-
-                    # Proper cross-account detection
+                    # Cross-account detection
                     if f.get("cross_account"):
                         cross_account_edges.add(edge)
 

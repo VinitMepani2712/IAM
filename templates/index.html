@@ -33,7 +33,16 @@
                 <path stroke-linecap="round" stroke-linejoin="round"
                     d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
             </svg>
-            Upload & Analyze
+            Upload &amp; Analyze
+        </a>
+
+        <a class="nav-item" href="/history-page">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Scan History
         </a>
 
         <div class="sidebar-footer">
@@ -125,11 +134,28 @@
 
     </main>
 
+    <!-- Loading overlay shown while analysis runs -->
+    <div id="loadingOverlay" style="
+        display: none; position: fixed; inset: 0;
+        background: rgba(10, 15, 28, 0.92); z-index: 9999;
+        flex-direction: column; align-items: center; justify-content: center; gap: 20px;">
+        <div style="width: 44px; height: 44px; border: 3px solid #1e3a5f;
+            border-top-color: #3b82f6; border-radius: 50%;
+            animation: spin 0.8s linear infinite;"></div>
+        <p style="color: #93c5fd; font-family: var(--sans); font-size: 1rem; font-weight: 500;">
+            Analyzing IAM configuration…
+        </p>
+        <p style="color: #475569; font-family: var(--sans); font-size: 0.85rem;">
+            Building attack graph &amp; detecting escalation paths
+        </p>
+        <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+    </div>
+
     <script>
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
-        const fileChip = document.getElementById('fileChip');
-        const fileName = document.getElementById('fileName');
+        const fileChip  = document.getElementById('fileChip');
+        const fileName  = document.getElementById('fileName');
 
         function setFile(name) {
             fileName.textContent = name;
@@ -144,6 +170,12 @@
             if (e.dataTransfer.files[0]) { fileInput.files = e.dataTransfer.files; setFile(e.dataTransfer.files[0].name); }
         });
         fileInput.addEventListener('change', function () { if (this.files[0]) setFile(this.files[0].name); });
+
+        document.querySelector('form').addEventListener('submit', function () {
+            if (fileInput.files.length === 0) return;   // let browser validation handle it
+            const overlay = document.getElementById('loadingOverlay');
+            overlay.style.display = 'flex';
+        });
     </script>
 
 </body>

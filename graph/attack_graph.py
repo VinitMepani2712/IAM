@@ -1,4 +1,5 @@
 from collections import defaultdict
+import fnmatch as _fnmatch
 import re
 
 
@@ -67,11 +68,32 @@ def _resources(stmt):
     return set(r) if r else {"*"}
 
 
-def _has_action(actions: set, prefix: str):
-    if prefix in actions:
-        return True
-    service = prefix.split(":")[0] + ":*"
-    return service in actions or "*" in actions
+def _has_action(actions: set, prefix: str) -> bool:
+    """
+    Return True if `prefix` (e.g. 'iam:PassRole') is granted by any action
+    in `actions`.  Handles:
+      * exact match         — 'iam:PassRole'
+      * full wildcard       — '*'
+      * service wildcard    — 'iam:*'
+      * partial wildcard    — 'iam:Pass*'  (fnmatch)
+      * case insensitivity  — 'IAM:passrole' == 'iam:PassRole'
+    """
+    prefix_l = prefix.lower()
+    for action in actions:
+        a = action.lower()
+        if a == prefix_l or a == "*":
+            return True
+        # service wildcard: iam:* matches iam:PassRole
+        if ":" in prefix_l and a == prefix_l.split(":")[0] + ":*":
+            return True
+        # partial wildcard: iam:Pass* matches iam:PassRole
+        if "*" in a and ":" in a:
+            svc, pat = a.split(":", 1)
+            tgt_svc, tgt_act = (prefix_l.split(":", 1) if ":" in prefix_l
+                                 else ("", prefix_l))
+            if (svc == "*" or svc == tgt_svc) and _fnmatch.fnmatch(tgt_act, pat):
+                return True
+    return False
 
 
 def _cap(name: str):
@@ -154,56 +176,61 @@ def build_attack_graph(principals: dict):
                                 add_assume_edge(name, rn)
 
             # ── PassRole + EC2 ────────────────────────────────────────────────
-            if _has_action(actions, "iam:PassRole") and _has_action(actions, "ec2:RunInstances"):
+            if (_has_action(actions, "iam:PassRole") and _has_action(actions, "ec2:RunInstances")
+                    and not _is_denied(name, "iam:PassRole", "*")
+                    and not _is_denied(name, "ec2:RunInstances", "*")):
                 a = _anode("iam:PassRole+ec2:RunInstances")
                 g.add_edge(name, a)
                 g.add_edge(a, _cap("COMPUTE_LAUNCH"))
 
             # ── PassRole + Lambda ─────────────────────────────────────────────
-            if _has_action(actions, "iam:PassRole") and _has_action(actions, "lambda:CreateFunction"):
+            if (_has_action(actions, "iam:PassRole") and _has_action(actions, "lambda:CreateFunction")
+                    and not _is_denied(name, "iam:PassRole", "*")
+                    and not _is_denied(name, "lambda:CreateFunction", "*")):
                 a = _anode("iam:PassRole+lambda:CreateFunction")
                 g.add_edge(name, a)
                 g.add_edge(a, _cap("COMPUTE_LAUNCH"))
 
             # ── Policy modification (role) ────────────────────────────────────
             for pol_action in ["iam:AttachRolePolicy", "iam:PutRolePolicy"]:
-                if _has_action(actions, pol_action):
+                if _has_action(actions, pol_action) and not _is_denied(name, pol_action, "*"):
                     a = _anode(pol_action)
                     g.add_edge(name, a)
                     g.add_edge(a, _cap("POLICY_MODIFICATION"))
 
-            # ── Policy modification (user) — NEW ──────────────────────────────
+            # ── Policy modification (user) ────────────────────────────────────
             for pol_action in ["iam:AttachUserPolicy", "iam:PutUserPolicy"]:
-                if _has_action(actions, pol_action):
+                if _has_action(actions, pol_action) and not _is_denied(name, pol_action, "*"):
                     a = _anode(pol_action)
                     g.add_edge(name, a)
                     g.add_edge(a, _cap("POLICY_MODIFICATION"))
 
             # ── Access key persistence ────────────────────────────────────────
-            if _has_action(actions, "iam:CreateAccessKey"):
+            if _has_action(actions, "iam:CreateAccessKey") and not _is_denied(name, "iam:CreateAccessKey", "*"):
                 a = _anode("iam:CreateAccessKey")
                 g.add_edge(name, a)
                 g.add_edge(a, _cap("ACCESS_KEY_PERSISTENCE"))
 
-            # ── Console access takeover — NEW ─────────────────────────────────
+            # ── Console access takeover ───────────────────────────────────────
             # CreateLoginProfile: create a console password for another user
             # UpdateLoginProfile: reset another user's console password
             for login_action in ["iam:CreateLoginProfile", "iam:UpdateLoginProfile"]:
-                if _has_action(actions, login_action):
+                if _has_action(actions, login_action) and not _is_denied(name, login_action, "*"):
                     a = _anode(login_action)
                     g.add_edge(name, a)
                     g.add_edge(a, _cap("CONSOLE_ACCESS"))
 
-            # ── Identity creation — NEW ───────────────────────────────────────
-            if _has_action(actions, "iam:CreateUser"):
+            # ── Identity creation ─────────────────────────────────────────────
+            if _has_action(actions, "iam:CreateUser") and not _is_denied(name, "iam:CreateUser", "*"):
                 a = _anode("iam:CreateUser")
                 g.add_edge(name, a)
                 g.add_edge(a, _cap("IDENTITY_CREATION"))
 
             # ── Wildcard IAM privilege ────────────────────────────────────────
-            if "iam:*" in actions or "*" in actions:
+            # Only add if iam:* or * is not itself denied
+            if ("iam:*" in actions or "*" in actions) and \
+               not _is_denied(name, "iam:*", "*") and not _is_denied(name, "*", "*"):
                 g.add_edge(name, _cap("PRIVILEGE_PROPAGATION"))
-                # Wildcard also implies console access and key creation
                 g.add_edge(name, _cap("CONSOLE_ACCESS"))
                 g.add_edge(name, _cap("ACCESS_KEY_PERSISTENCE"))
 
@@ -218,7 +245,7 @@ def build_attack_graph(principals: dict):
                 ("iam:GetRole",                 "RECON"),
                 ("iam:SimulatePrincipalPolicy",  "RECON"),
             ]:
-                if _has_action(actions, read_action):
+                if _has_action(actions, read_action) and not _is_denied(name, read_action, "*"):
                     a = _anode(read_action)
                     g.add_edge(name, a)
                     g.add_edge(a, _cap(cap_name))

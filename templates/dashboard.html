@@ -22,15 +22,73 @@
             "full_edges": full_edges
         } | tojson }}
     </script>
+
+    <script id="findings-data" type="application/json">
+        {{ findings | tojson }}
+    </script>
 </head>
 
 <body>
+
+    <!--  TOAST CONTAINER  -->
+    <div id="toast-container"></div>
+
+    <!--  SUPPRESSION MODAL  -->
+    <div class="modal-overlay" id="suppressModal" onclick="closeSuppressionModal(event)">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>🔇 Suppressed Findings</h3>
+                <button class="modal-close" onclick="closeSuppressionModal()">✕ Close</button>
+            </div>
+            <div class="modal-body" id="suppressionList">
+                <div class="modal-empty">Loading…</div>
+            </div>
+        </div>
+    </div>
 
     <aside class="sidebar">
         <div class="brand">
             <i data-feather="shield"></i>
             <span>IAM Defender</span>
         </div>
+
+        <div class="nav-label">Navigation</div>
+
+        <a class="nav-item" href="/">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+            </svg>
+            Upload &amp; Analyze
+        </a>
+
+        <a class="nav-item active" href="#">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3" />
+            </svg>
+            Dashboard
+        </a>
+
+        <a class="nav-item" href="/history-page">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Scan History
+        </a>
+
+        <div class="nav-sep"></div>
+        <div class="nav-label">Manage</div>
+
+        <button class="nav-item" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;"
+            onclick="openSuppressionModal()">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+            Suppressions
+        </button>
     </aside>
 
     <main class="main-content">
@@ -39,8 +97,13 @@
             <div>
                 <h1>IAM Risk Dashboard</h1>
                 <p style="color: var(--text-muted); margin-top: 6px;">
-                    Analysis complete &mdash; <strong style="color: white;">{{ total_principals }}</strong> principals
-                    scanned
+                    {% if filename %}
+                        <strong style="color: white;">{{ filename }}</strong> &mdash;
+                    {% endif %}
+                    <strong style="color: white;">{{ total_principals }}</strong> principals scanned
+                    {% if scan_time %}
+                        &mdash; <span style="font-size:0.85em;">{{ scan_time }}</span>
+                    {% endif %}
                 </p>
             </div>
             <div style="display: flex; gap: 10px; align-items: center;">
@@ -65,25 +128,22 @@
             </div>
         </header>
 
-        <!-- ================= STATS ================= -->
+        <!--  STATS  -->
         <section class="stats-grid">
             <div class="stat-card">
                 <h3>Total Principals</h3>
                 <p class="stat-value">{{ total_principals }}</p>
             </div>
-
             <div class="stat-card">
                 <h3>Total Findings</h3>
                 <p class="stat-value">{{ findings|length }}</p>
             </div>
-
             <div class="stat-card critical">
                 <h3>Critical Risks</h3>
                 <p class="stat-value">
                     {{ findings | selectattr('severity', 'equalto', 'CRITICAL') | list | length }}
                 </p>
             </div>
-
             <div class="stat-card">
                 <h3>Cross-Account</h3>
                 <p class="stat-value">
@@ -92,27 +152,16 @@
             </div>
         </section>
 
-        <!-- ================= REMEDIATION ================= -->
+        <!--  REMEDIATION  -->
         <section class="card remediation-card">
-
             <div class="card-header">
                 <h2>🛠 Optimal Remediation Strategy</h2>
             </div>
-
             <div class="remediation-summary">
-
                 <div class="remediation-metrics">
-                    <div>
-                        <strong>Total Escalation Paths:</strong>
-                        {{ remediation.total_paths }}
-                    </div>
-
-                    <div>
-                        <strong>Minimal Fix Set Size:</strong>
-                        {{ remediation.recommended_fixes|length }}
-                    </div>
+                    <div><strong>Total Escalation Paths:</strong> {{ remediation.total_paths }}</div>
+                    <div><strong>Minimal Fix Set Size:</strong> {{ remediation.recommended_fixes|length }}</div>
                 </div>
-
                 <div class="remediation-list">
                     <h4>Fix These to Eliminate Most Risk:</h4>
                     <ol>
@@ -121,7 +170,6 @@
                         {% endfor %}
                     </ol>
                 </div>
-
                 {% if remediation.dominators %}
                 <div class="dominator-section">
                     <h4>Structural Choke Points (appear in every escalation path):</h4>
@@ -132,12 +180,10 @@
                     </ul>
                 </div>
                 {% endif %}
-
             </div>
-
         </section>
 
-        <!-- ================= TOP CRITICAL NODES ================= -->
+        <!--  TOP CRITICAL NODES  -->
         {% if top_critical %}
         <section class="card">
             <div class="card-header">
@@ -160,98 +206,80 @@
         </section>
         {% endif %}
 
-        <!-- ================= GRAPH ================= -->
+        <!--  GRAPH  -->
         <section class="card graph-card">
-
             <div class="card-header">
                 <h2>Attack Path Visualization</h2>
                 <div class="controls">
-                    <button onclick="showEscalation()" class="btn-tab active" id="btn-escalation">Escalation
-                        View</button>
+                    <button onclick="showEscalation()" class="btn-tab active" id="btn-escalation">Escalation View</button>
                     <button onclick="expandGraph()" class="btn-tab" id="btn-full">Full Topology</button>
-                    <button onclick="network.fit({animation:{duration:500,easingFunction:'easeInOutQuad'}})"
-                        class="btn-tab">⊞ Fit</button>
+                    <button onclick="network.fit({animation:{duration:500,easingFunction:'easeInOutQuad'}})" class="btn-tab">⊞ Fit</button>
                     <button onclick="resetGraph()" class="btn-tab">Reset</button>
                 </div>
             </div>
 
+            <!-- Severity filter chips -->
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+                <span style="color:var(--text-muted);font-size:0.8rem;white-space:nowrap;">Filter graph:</span>
+                <button class="btn-sev-chip active" id="gfc-all"      onclick="filterGraphBySeverity('ALL')">All</button>
+                <button class="btn-sev-chip critical"  id="gfc-critical" onclick="filterGraphBySeverity('CRITICAL')">Critical</button>
+                <button class="btn-sev-chip high"      id="gfc-high"     onclick="filterGraphBySeverity('HIGH')">High</button>
+                <button class="btn-sev-chip medium"    id="gfc-medium"   onclick="filterGraphBySeverity('MEDIUM')">Medium</button>
+                <button class="btn-sev-chip low"       id="gfc-low"      onclick="filterGraphBySeverity('LOW')">Low</button>
+            </div>
+
             <!-- Path selector -->
             <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
-                <label style="color:var(--text-muted);font-size:0.85rem;white-space:nowrap;">
-                    🔍 Isolate path:
-                </label>
+                <label style="color:var(--text-muted);font-size:0.85rem;white-space:nowrap;">🔍 Isolate path:</label>
                 <select id="pathSelector" onchange="selectPath(this.value)" style="flex:1; min-width:280px; max-width:560px;
-                           padding:8px 12px; border-radius:8px;
-                           background:#0b1220; border:1px solid var(--border);
-                           color:var(--text-main); font-size:0.85rem; cursor:pointer;">
+                    padding:8px 12px; border-radius:8px; background:#0b1220; border:1px solid var(--border);
+                    color:var(--text-main); font-size:0.85rem; cursor:pointer;">
                     <option value="">— Show all escalation paths —</option>
                 </select>
                 <span id="pathCounter" style="color:var(--text-muted);font-size:0.82rem;white-space:nowrap;"></span>
                 <button onclick="clearPathSelection()" style="padding:7px 13px;border-radius:7px;border:1px solid var(--border);
-                           background:transparent;color:var(--text-muted);cursor:pointer;font-size:0.82rem;">
-                    ✕ Clear
-                </button>
+                    background:transparent;color:var(--text-muted);cursor:pointer;font-size:0.82rem;">✕ Clear</button>
             </div>
 
             <!-- Graph canvas -->
             <div style="position:relative;">
-                <div id="graphLoading" style="
-                    position:absolute; inset:0;
-                    background:rgba(11,18,32,0.88);
-                    display:flex; flex-direction:column;
-                    align-items:center; justify-content:center;
+                <div id="graphLoading" style="position:absolute; inset:0; background:rgba(11,18,32,0.88);
+                    display:flex; flex-direction:column; align-items:center; justify-content:center;
                     border-radius:14px; z-index:10; gap:14px;">
-                    <div style="width:36px;height:36px;border:3px solid #334155;
-                        border-top-color:#3b82f6;border-radius:50%;
-                        animation:graphSpin 0.8s linear infinite;"></div>
+                    <div style="width:36px;height:36px;border:3px solid #334155;border-top-color:#3b82f6;
+                        border-radius:50%;animation:graphSpin 0.8s linear infinite;"></div>
                     <span style="color:#94a3b8;font-size:0.88rem;">Building attack graph…</span>
                 </div>
                 <div id="network"></div>
             </div>
 
             <!-- Legend -->
-            <div
-                style="display:flex; flex-wrap:wrap; gap:18px; margin-top:14px; font-size:0.82rem; color:var(--text-muted);">
-                <span><span
-                        style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#3b82f6;margin-right:6px;vertical-align:middle;"></span>Principal</span>
-                <span><span
-                        style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#6366f1;margin-right:6px;vertical-align:middle;"></span>Action
-                    Node</span>
-                <span><span
-                        style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#22c55e;margin-right:6px;vertical-align:middle;"></span>Capability
-                    (target)</span>
-                <span><span
-                        style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#ef4444;margin-right:6px;vertical-align:middle;"></span>Top
-                    Critical Node</span>
-                <span><span
-                        style="display:inline-block;width:22px;height:3px;background:#facc15;border-radius:2px;margin-right:6px;vertical-align:middle;"></span>Escalation
-                    Path</span>
-                <span><span
-                        style="display:inline-block;width:22px;height:3px;background:#ef4444;border-radius:2px;margin-right:6px;vertical-align:middle;border-top:2px dashed #ef4444;"></span>Cross-Account
-                    Pivot</span>
+            <div style="display:flex; flex-wrap:wrap; gap:18px; margin-top:14px; font-size:0.82rem; color:var(--text-muted);">
+                <span><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#3b82f6;margin-right:6px;vertical-align:middle;"></span>Principal</span>
+                <span><span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#6366f1;margin-right:6px;vertical-align:middle;"></span>Action Node</span>
+                <span><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#22c55e;margin-right:6px;vertical-align:middle;"></span>Capability (target)</span>
+                <span><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#ef4444;margin-right:6px;vertical-align:middle;"></span>Top Critical Node</span>
+                <span><span style="display:inline-block;width:22px;height:3px;background:#facc15;border-radius:2px;margin-right:6px;vertical-align:middle;"></span>Escalation Path</span>
+                <span><span style="display:inline-block;width:22px;height:3px;background:#ef4444;border-radius:2px;margin-right:6px;vertical-align:middle;border-top:2px dashed #ef4444;"></span>Cross-Account Pivot</span>
             </div>
 
-            <style>
-                @keyframes graphSpin {
-                    to {
-                        transform: rotate(360deg);
-                    }
-                }
-            </style>
-
+            <style>@keyframes graphSpin { to { transform: rotate(360deg); } }</style>
         </section>
 
-        <!-- ================= TABLE ================= -->
+        <!--  TABLE  -->
         <section class="card table-wrapper">
-
             <div class="card-header table-header">
-                <h2>Escalation Findings</h2>
-
+                <h2>
+                    Escalation Findings
+                    <span class="findings-count-badge" id="findingsCountBadge">{{ findings|length }}</span>
+                </h2>
                 <div class="table-controls">
-                    <input type="text" id="searchInput" placeholder="Search Principal...">
-                    <button onclick="filterSeverity('ALL')">All</button>
-                    <button onclick="filterSeverity('CRITICAL')">Critical</button>
-                    <button onclick="filterSeverity('HIGH')">High</button>
+                    <input type="text" id="searchInput" placeholder="Search findings...">
+                    <button onclick="filterSeverity('ALL')"      class="sev-filter-btn active" id="sf-all">All</button>
+                    <button onclick="filterSeverity('CRITICAL')" class="sev-filter-btn" id="sf-critical">Critical</button>
+                    <button onclick="filterSeverity('HIGH')"     class="sev-filter-btn" id="sf-high">High</button>
+                    <button onclick="filterSeverity('MEDIUM')"   class="sev-filter-btn" id="sf-medium">Medium</button>
+                    <button onclick="filterSeverity('LOW')"      class="sev-filter-btn" id="sf-low">Low</button>
                 </div>
             </div>
 
@@ -259,18 +287,20 @@
             <table id="findingsTable">
                 <thead>
                     <tr>
-                        <th>Principal</th>
-                        <th>Capability</th>
-                        <th>Risk</th>
-                        <th>Severity</th>
+                        <th class="sortable" onclick="sortTable(0)">Principal <span class="sort-icon">⇅</span></th>
+                        <th class="sortable" onclick="sortTable(1)">Capability <span class="sort-icon">⇅</span></th>
+                        <th class="sortable" onclick="sortTable(2)">Risk <span class="sort-icon">⇅</span></th>
+                        <th class="sortable" onclick="sortTable(3)">Severity <span class="sort-icon">⇅</span></th>
                         <th>Pattern</th>
                         <th>MITRE</th>
                         <th>Conditions</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for f in findings %}
-                    <tr class="finding-row" data-path='{{ f.path | tojson }}'
+                    <tr class="finding-row" data-severity="{{ f.severity }}"
+                        data-path='{{ f.path | tojson }}'
                         data-conditions='{{ f.get("condition_flags", {}) | tojson }}'>
                         <td>{{ f.principal }}</td>
                         <td>{{ f.capability }}</td>
@@ -281,25 +311,28 @@
                             <span class="risk-score">{{ f.risk }}</span>
                         </td>
                         <td>
-                            <span class="severity-pill severity-{{ f.severity|lower }}">
-                                {{ f.severity }}
-                            </span>
+                            <span class="severity-pill severity-{{ f.severity|lower }}">{{ f.severity }}</span>
                         </td>
                         <td>{{ f.pattern }}</td>
                         <td>{{ f.mitre }}</td>
                         <td>
                             {% set cf = f.get('condition_flags', {}) %}
                             {% if cf.get('requires_mfa') %}
-                            <span class="condition-badge condition-mfa"
-                                title="MFA required on this path — risk reduced">🔐 MFA</span>
+                                <span class="condition-badge condition-mfa" title="MFA required — risk reduced">🔐 MFA</span>
                             {% endif %}
                             {% if cf.get('requires_external_id') %}
-                            <span class="condition-badge condition-extid" title="ExternalId required — risk reduced">🔑
-                                ExtID</span>
+                                <span class="condition-badge condition-extid" title="ExternalId required — risk reduced">🔑 ExtID</span>
                             {% endif %}
                             {% if not cf.get('requires_mfa') and not cf.get('requires_external_id') %}
-                            <span style="color: var(--text-muted); font-size: 0.8rem;">—</span>
+                                <span class="condition-badge condition-none" title="No conditions — path is fully unprotected">⚠ None</span>
                             {% endif %}
+                        </td>
+                        <td>
+                            <button class="btn-suppress"
+                                onclick="suppressFinding(this, '{{ f.principal | e }}', '{{ f.capability | e }}')"
+                                title="Mark as false positive">
+                                Suppress
+                            </button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -310,148 +343,135 @@
                 ✅ No privilege escalation paths detected in this IAM configuration.
             </div>
             {% endif %}
-
         </section>
 
     </main>
 
-    <!-- ================= ATTACK PANEL ================= -->
+    <!--  ATTACK PANEL  -->
     <div id="attackPanel" class="attack-panel hidden">
-
         <div class="panel-header">
             <h3>🛡 Attack Investigation</h3>
             <button onclick="closePanel()"
-                style="background:transparent; border:1px solid var(--border); color:white; padding:6px 12px; border-radius:6px; cursor:pointer;">✕
-                Close</button>
+                style="background:transparent;border:1px solid var(--border);color:white;padding:6px 12px;border-radius:6px;cursor:pointer;">✕ Close</button>
         </div>
-
         <div class="panel-content">
-
             <div class="panel-section">
                 <h4>Attack Summary</h4>
                 <div id="attackSummary"></div>
             </div>
-
             <div class="panel-section">
                 <h4>How The Attack Works</h4>
                 <ol id="attackSteps"></ol>
             </div>
-
             <div class="panel-section">
                 <h4>Business Impact</h4>
                 <p id="attackImpact" style="white-space: pre-line;"></p>
             </div>
-
             <div class="panel-section">
                 <h4>Recommended Mitigation</h4>
                 <p id="attackMitigation" style="white-space: pre-line;"></p>
             </div>
-
         </div>
-
     </div>
 
     <script>
         feather.replace();
 
-        const graphRaw = JSON.parse(document.getElementById("graph-data").textContent);
+        /*  TOAST  */
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => toast.classList.add('show'));
+            });
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        /*  KEYBOARD SHORTCUTS  */
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                closePanel();
+                closeSuppressionModal();
+            }
+        });
+
+        /*  GRAPH DATA  */
+        const graphRaw   = JSON.parse(document.getElementById("graph-data").textContent);
         const topCritical = JSON.parse(document.getElementById("top-critical-data").textContent);
 
         let nodes = new vis.DataSet(graphRaw.nodes);
         let edges = new vis.DataSet(graphRaw.edges);
 
-        /* ================= TOOLTIP HELPER ================= */
         function makeTooltip(type, name) {
             const div = document.createElement("div");
-            div.style.cssText = `
-                background: #1e293b;
-                border: 1px solid #334155;
-                border-radius: 8px;
-                padding: 8px 12px;
-                font-family: Inter, system-ui, sans-serif;
-                font-size: 12px;
-                color: #e2e8f0;
-                max-width: 240px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-            `;
+            div.style.cssText = "background:#1e293b;border:1px solid #334155;border-radius:8px;padding:8px 12px;font-family:Inter,system-ui,sans-serif;font-size:12px;color:#e2e8f0;max-width:240px;box-shadow:0 4px 12px rgba(0,0,0,0.4);";
             const label = document.createElement("div");
-            label.style.cssText = "font-weight:700; color:#94a3b8; font-size:10px; text-transform:uppercase; margin-bottom:4px;";
+            label.style.cssText = "font-weight:700;color:#94a3b8;font-size:10px;text-transform:uppercase;margin-bottom:4px;";
             label.textContent = type;
             const value = document.createElement("div");
-            value.style.cssText = "font-weight:600; word-break:break-all;";
+            value.style.cssText = "font-weight:600;word-break:break-all;";
             value.textContent = name;
             div.appendChild(label);
             div.appendChild(value);
             return div;
         }
 
-        /* ================= NODE STYLING ================= */
         function applyBaseNodeStyles() {
             nodes.forEach(node => {
-
-                // ── Principal (user/role) ──
-                node.shape = "dot";
-                node.size = 26;
+                node.shape = "dot"; node.size = 26;
                 node.color = { background: "#3b82f6", border: "#1e40af" };
-                node.font = { color: "#ffffff", size: 13, strokeWidth: 3, strokeColor: "#0f172a" };
+                node.font  = { color: "#ffffff", size: 13, strokeWidth: 3, strokeColor: "#0f172a" };
                 node.label = node.id.length > 22 ? node.id.slice(0, 20) + "…" : node.id;
                 node.title = makeTooltip("Principal", node.id);
 
-                // ── Capability (end goal) ──
                 if (node.id.startsWith("CAPABILITY::")) {
                     const cap = node.id.replace("CAPABILITY::", "");
-                    node.shape = "star";
-                    node.size = 38;
+                    node.shape = "star"; node.size = 38;
                     node.color = { background: "#22c55e", border: "#15803d" };
                     node.label = cap;
-                    node.font = { color: "#ffffff", size: 12, strokeWidth: 3, strokeColor: "#14532d" };
+                    node.font  = { color: "#ffffff", size: 12, strokeWidth: 3, strokeColor: "#14532d" };
                     node.title = makeTooltip("Capability", cap);
                 }
-
-                // ── Action (intermediate step) ──
                 if (node.id.startsWith("ACTION::")) {
                     const parts = node.id.replace("ACTION::", "").split("::");
-                    const action = parts[0];
-                    const target = parts[1] ? parts[1].slice(0, 14) : "";
-                    node.shape = "box";
-                    node.size = 18;
+                    const action = parts[0], target = parts[1] ? parts[1].slice(0, 14) : "";
+                    node.shape = "box"; node.size = 18;
                     node.color = { background: "#6366f1", border: "#4338ca" };
                     node.label = target ? `${action}\n→ ${target}` : action;
-                    node.font = { color: "#ffffff", size: 11, strokeWidth: 2, strokeColor: "#1e1b4b" };
+                    node.font  = { color: "#ffffff", size: 11, strokeWidth: 2, strokeColor: "#1e1b4b" };
                     node.title = makeTooltip("Action", node.id.replace("ACTION::", ""));
                     node.widthConstraint = { maximum: 160 };
                 }
-
-                // ── Top Critical ──
                 if (topCritical.includes(node.id)) {
-                    node.size = 42;
+                    node.size  = 42;
                     node.color = { background: "#ef4444", border: "#991b1b" };
-                    node.font = { color: "#ffffff", size: 14, bold: true, strokeWidth: 3, strokeColor: "#450a0a" };
+                    node.font  = { color: "#ffffff", size: 14, bold: true, strokeWidth: 3, strokeColor: "#450a0a" };
                     node.title = makeTooltip("⚠ Top Critical", node.id);
                     node.shadow = { enabled: true, color: "rgba(239,68,68,0.5)", size: 16 };
                 }
-
                 node.opacity = 1;
                 nodes.update(node);
             });
         }
 
-        /* ================= NETWORK INIT ================= */
-
-        // Build path selector dropdown from findings
-        const allFindings = {{ findings | tojson }};
-        const selector = document.getElementById("pathSelector");
-        const counter = document.getElementById("pathCounter");
+        /*  PATH SELECTOR  */
+        const allFindings = JSON.parse(document.getElementById("findings-data").textContent);
+        const selector    = document.getElementById("pathSelector");
+        const counter     = document.getElementById("pathCounter");
         counter.textContent = `${allFindings.length} paths`;
 
         allFindings.forEach((f, i) => {
             const opt = document.createElement("option");
             opt.value = i;
-            const steps = f.path.length - 1;
-            opt.textContent = `[${f.severity}] ${f.principal} → ${f.capability}  (${steps} hops)`;
-            opt.style.color = f.severity === "CRITICAL" ? "#ef4444"
-                : f.severity === "HIGH" ? "#f97316"
-                    : f.severity === "MEDIUM" ? "#eab308" : "#22c55e";
+            opt.textContent = `[${f.severity}] ${f.principal} → ${f.capability}  (${f.path.length - 1} hops)`;
+            opt.style.color = f.severity === "CRITICAL" ? "#ef4444" : f.severity === "HIGH" ? "#f97316"
+                : f.severity === "MEDIUM" ? "#eab308" : "#22c55e";
             selector.appendChild(opt);
         });
 
@@ -460,79 +480,29 @@
             const f = allFindings[parseInt(val)];
             if (f) {
                 showEscalation();
+                filterGraphBySeverity('ALL', false);
                 setTimeout(() => highlightPath(f.path), 100);
             }
         }
+        function clearPathSelection() { selector.value = ""; showEscalation(); }
 
-        function clearPathSelection() {
-            selector.value = "";
-            showEscalation();
-        }
-
-        // Always use physics-based layout — never hierarchical
+        /*  NETWORK OPTIONS  */
         const networkOptions = {
-            layout: {
-                randomSeed: 2
-            },
+            layout: { randomSeed: 2 },
             physics: {
-                enabled: true,
-                solver: "barnesHut",
-                barnesHut: {
-                    gravitationalConstant: -8000,
-                    centralGravity: 0.3,
-                    springLength: 180,
-                    springConstant: 0.02,
-                    damping: 0.95,
-                    avoidOverlap: 0.5
-                },
-                stabilization: {
-                    enabled: true,
-                    iterations: 200,
-                    updateInterval: 50,
-                    fit: true
-                },
+                enabled: true, solver: "barnesHut",
+                barnesHut: { gravitationalConstant: -8000, centralGravity: 0.3, springLength: 180, springConstant: 0.02, damping: 0.95, avoidOverlap: 0.5 },
+                stabilization: { enabled: true, iterations: 200, updateInterval: 50, fit: true },
                 minVelocity: 0.75
             },
-            interaction: {
-                hover: true,
-                navigationButtons: false,   // hide clunky nav buttons, use scroll/drag instead
-                tooltipDelay: 150,
-                zoomView: true,
-                dragView: true,
-                zoomSpeed: 0.5,             // slower zoom = easier to control
-                keyboard: { enabled: true, speed: { x: 10, y: 10, zoom: 0.02 } },
-                multiselect: false
-            },
-            nodes: {
-                font: {
-                    size: 13,
-                    color: "#ffffff",
-                    strokeWidth: 3,
-                    strokeColor: "#0f172a",
-                    face: "Inter, system-ui, sans-serif"
-                },
-                borderWidth: 2,
-                shadow: { enabled: true, color: "rgba(0,0,0,0.4)", size: 8, x: 2, y: 2 }
-            },
-            edges: {
-                arrows: { to: { enabled: true, scaleFactor: 0.6 } },
-                width: 2,
-                smooth: { type: "dynamic" },
-                color: { color: "#475569", highlight: "#facc15", hover: "#94a3b8" },
-                font: { size: 0 },
-                shadow: false
-            }
+            interaction: { hover: true, navigationButtons: false, tooltipDelay: 150, zoomView: true, dragView: true, zoomSpeed: 0.5, keyboard: { enabled: true, speed: { x: 10, y: 10, zoom: 0.02 } } },
+            nodes: { font: { size: 13, color: "#ffffff", strokeWidth: 3, strokeColor: "#0f172a", face: "Inter, system-ui, sans-serif" }, borderWidth: 2, shadow: { enabled: true, color: "rgba(0,0,0,0.4)", size: 8, x: 2, y: 2 } },
+            edges: { arrows: { to: { enabled: true, scaleFactor: 0.6 } }, width: 2, smooth: { type: "dynamic" }, color: { color: "#475569", highlight: "#facc15", hover: "#94a3b8" }, font: { size: 0 }, shadow: false }
         };
 
-        const network = new vis.Network(
-            document.getElementById("network"),
-            { nodes, edges },
-            networkOptions
-        );
-
+        const network = new vis.Network(document.getElementById("network"), { nodes, edges }, networkOptions);
         applyBaseNodeStyles();
 
-        // Hide loader after physics stabilizes, then lock positions
         network.once("stabilizationIterationsDone", () => {
             network.setOptions({ physics: { enabled: false } });
             network.fit({ animation: { duration: 800, easingFunction: "easeInOutQuad" } });
@@ -540,62 +510,205 @@
             if (loader) loader.style.display = "none";
         });
 
-        /* ================= HIGHLIGHT PATH ================= */
+        /*  HIGHLIGHT PATH  */
         function highlightPath(path) {
             applyBaseNodeStyles();
-
             nodes.forEach(node => { node.opacity = 0.15; nodes.update(node); });
             edges.forEach(edge => { edge.color = "#334155"; edge.width = 1; edges.update(edge); });
-
             for (let i = 0; i < path.length; i++) {
                 const node = nodes.get(path[i]);
                 if (node) { node.opacity = 1; node.size = (node.size || 28) + 6; nodes.update(node); }
-
                 if (i < path.length - 1) {
-                    const match = edges.get({ filter: e => e.from === path[i] && e.to === path[i + 1] });
-                    match.forEach(edge => { edge.color = "#facc15"; edge.width = 4; edges.update(edge); });
+                    edges.get({ filter: e => e.from === path[i] && e.to === path[i + 1] })
+                         .forEach(edge => { edge.color = "#facc15"; edge.width = 4; edges.update(edge); });
                 }
             }
             network.fit({ animation: true });
         }
 
-        /* ================= TABLE CLICK ================= */
+        /*  GRAPH SEVERITY FILTER  */
+        function filterGraphBySeverity(level, updateButtons = true) {
+            applyBaseNodeStyles();
+            if (level !== 'ALL') {
+                const relevantNodes = new Set();
+                allFindings.filter(f => f.severity === level).forEach(f => f.path.forEach(n => relevantNodes.add(n)));
+                nodes.forEach(node => { node.opacity = relevantNodes.has(node.id) ? 1 : 0.07; nodes.update(node); });
+                edges.forEach(edge => {
+                    const relevant = relevantNodes.has(edge.from) && relevantNodes.has(edge.to);
+                    edge.color = relevant ? { color: '#475569', highlight: '#facc15', hover: '#94a3b8' } : { color: '#131d2e', highlight: '#131d2e', hover: '#131d2e' };
+                    edges.update(edge);
+                });
+            }
+            if (updateButtons) {
+                document.querySelectorAll('.btn-sev-chip').forEach(b => b.classList.remove('active'));
+                const btn = document.getElementById(`gfc-${level.toLowerCase()}`);
+                if (btn) btn.classList.add('active');
+            }
+        }
+
+        /*  TABLE CLICK  */
         document.querySelectorAll(".finding-row").forEach(row => {
-            row.addEventListener("click", function () {
+            row.addEventListener("click", function (e) {
+                if (e.target.classList.contains('btn-suppress')) return;
                 const path = JSON.parse(this.dataset.path);
-                const cf = this.dataset.conditions ? JSON.parse(this.dataset.conditions) : {};
-                const finding = {
-                    principal: this.cells[0].innerText,
-                    capability: this.cells[1].innerText,
-                    risk: this.cells[2].innerText,
-                    severity: this.cells[3].innerText,
-                    pattern: this.cells[4].innerText,
-                    mitre: this.cells[5].innerText,
-                    path: path,
-                    condition_flags: cf,
-                };
+                const cf   = this.dataset.conditions ? JSON.parse(this.dataset.conditions) : {};
                 highlightPath(path);
-                openPanel(finding);
+                openPanel({
+                    principal: this.cells[0].innerText, capability: this.cells[1].innerText,
+                    risk: this.cells[2].innerText, severity: this.cells[3].innerText,
+                    pattern: this.cells[4].innerText, mitre: this.cells[5].innerText,
+                    path, condition_flags: cf,
+                });
             });
         });
 
-        /* ================= FILTERS ================= */
+        /*  TABLE FILTERS + SEARCH  */
+        let activeSeverityFilter = 'ALL';
+        const totalFindings = allFindings.length;
+
         function filterSeverity(level) {
+            activeSeverityFilter = level;
+            applyTableFilters();
+            document.querySelectorAll('.sev-filter-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`sf-${level.toLowerCase()}`).classList.add('active');
+        }
+
+        document.getElementById("searchInput").addEventListener("keyup", applyTableFilters);
+
+        function applyTableFilters() {
+            const filter = document.getElementById("searchInput").value.toLowerCase();
+            let visible  = 0;
             document.querySelectorAll("#findingsTable tbody tr").forEach(row => {
-                const severity = row.cells[3].innerText.trim();
-                row.style.display = (level === "ALL" || severity === level) ? "" : "none";
+                const sev    = row.dataset.severity || "";
+                const text   = Array.from(row.cells).slice(0, 6).map(c => c.innerText.toLowerCase()).join(" ");
+                const sevOk  = activeSeverityFilter === 'ALL' || sev === activeSeverityFilter;
+                const textOk = !filter || text.includes(filter);
+                const show   = sevOk && textOk;
+                row.style.display = show ? "" : "none";
+                if (show) visible++;
+            });
+            const badge = document.getElementById('findingsCountBadge');
+            if (badge) badge.textContent = visible < totalFindings ? `${visible} / ${totalFindings}` : totalFindings;
+        }
+
+        /*  TABLE SORT  */
+        let sortState = { col: -1, asc: true };
+        const SEV_ORDER = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+
+        function sortTable(col) {
+            const tbody = document.querySelector("#findingsTable tbody");
+            const rows  = Array.from(tbody.querySelectorAll("tr"));
+            const asc   = sortState.col === col ? !sortState.asc : true;
+            sortState   = { col, asc };
+            rows.sort((a, b) => {
+                let va = a.cells[col]?.innerText.trim() || "";
+                let vb = b.cells[col]?.innerText.trim() || "";
+                if (col === 2) return asc ? (parseFloat(va) || 0) - (parseFloat(vb) || 0) : (parseFloat(vb) || 0) - (parseFloat(va) || 0);
+                if (col === 3) { const oa = SEV_ORDER[va] || 0, ob = SEV_ORDER[vb] || 0; return asc ? oa - ob : ob - oa; }
+                return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+            });
+            rows.forEach(r => tbody.appendChild(r));
+            document.querySelectorAll("#findingsTable th.sortable").forEach((th, i) => {
+                const icon = th.querySelector(".sort-icon");
+                if (icon) icon.textContent = i === col ? (asc ? "↑" : "↓") : "⇅";
             });
         }
 
-        document.getElementById("searchInput").addEventListener("keyup", function () {
-            const filter = this.value.toLowerCase();
-            document.querySelectorAll("#findingsTable tbody tr").forEach(row => {
-                const principal = row.cells[0].innerText.toLowerCase();
-                row.style.display = principal.includes(filter) ? "" : "none";
-            });
-        });
+        /*  SUPPRESS FINDING  */
+        function suppressFinding(btn, principal, capability) {
+            if (!confirm(`Suppress finding?\n\n${principal} → ${capability}\n\nIt will be hidden from future scans.`)) return;
+            fetch('/suppress', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ principal, capability })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { showToast('Error: ' + data.error, 'error'); return; }
+                const row = btn.closest('tr');
+                row.style.transition = 'opacity 0.5s';
+                row.style.opacity    = '0.2';
+                setTimeout(() => { row.style.display = 'none'; applyTableFilters(); }, 600);
+                showToast(`Suppressed: ${principal} → ${capability}`, 'info');
+            })
+            .catch(() => showToast('Failed to suppress finding — server error', 'error'));
+        }
 
-        /* ================= GRAPH TOGGLES ================= */
+        // On load: hide already-suppressed rows
+        fetch('/suppressions')
+            .then(r => r.json())
+            .then(sups => {
+                if (!sups.length) return;
+                const supSet = new Set(sups.map(s => `${s.principal}|${s.capability}`));
+                document.querySelectorAll('.finding-row').forEach(row => {
+                    const key = `${row.cells[0].innerText.trim()}|${row.cells[1].innerText.trim()}`;
+                    if (supSet.has(key)) row.style.display = 'none';
+                });
+                applyTableFilters();
+            })
+            .catch(() => {});
+
+        /*  SUPPRESSION MODAL  */
+        function openSuppressionModal() {
+            document.getElementById('suppressModal').classList.add('open');
+            loadSuppressions();
+        }
+
+        function closeSuppressionModal(e) {
+            if (e && e.target !== document.getElementById('suppressModal')) return;
+            document.getElementById('suppressModal').classList.remove('open');
+        }
+
+        function loadSuppressions() {
+            const list = document.getElementById('suppressionList');
+            list.innerHTML = '<div class="modal-empty">Loading…</div>';
+            fetch('/suppressions')
+                .then(r => r.json())
+                .then(sups => {
+                    if (!sups.length) {
+                        list.innerHTML = '<div class="modal-empty">No suppressions yet — use the Suppress button on any finding.</div>';
+                        return;
+                    }
+                    list.innerHTML = '';
+                    sups.forEach(s => {
+                        const row = document.createElement('div');
+                        row.className = 'suppression-row';
+                        row.id = `sup-${s.id}`;
+                        row.innerHTML = `
+                            <div class="suppression-info">
+                                <div class="suppression-principal">${escHtml(s.principal)}</div>
+                                <div class="suppression-capability">→ ${escHtml(s.capability)}</div>
+                                <div class="suppression-date">${escHtml(s.created_at)}</div>
+                            </div>
+                            <button class="btn-unsuppress" onclick="unsuppress(${s.id}, '${escHtml(s.principal)}', '${escHtml(s.capability)}')">
+                                Unsuppress
+                            </button>`;
+                        list.appendChild(row);
+                    });
+                })
+                .catch(() => { list.innerHTML = '<div class="modal-empty">Failed to load suppressions.</div>'; });
+        }
+
+        function unsuppress(id, principal, capability) {
+            fetch(`/suppress/${id}`, { method: 'DELETE' })
+                .then(r => r.json())
+                .then(() => {
+                    document.getElementById(`sup-${id}`)?.remove();
+                    if (!document.querySelector('.suppression-row')) {
+                        document.getElementById('suppressionList').innerHTML =
+                            '<div class="modal-empty">No suppressions yet.</div>';
+                    }
+                    showToast(`Unsuppressed: ${principal} → ${capability}`, 'success');
+                    // Reload page so the finding reappears on next scan
+                })
+                .catch(() => showToast('Failed to remove suppression', 'error'));
+        }
+
+        function escHtml(str) {
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        }
+
+        /*  GRAPH TOGGLES  */
         function reSpread() {
             network.setOptions({ physics: { enabled: true } });
             network.once("stabilizationIterationsDone", () => {
@@ -603,58 +716,40 @@
                 network.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" } });
             });
         }
-
         function expandGraph() {
             nodes.clear(); edges.clear();
             nodes.add(graphRaw.full_nodes); edges.add(graphRaw.full_edges);
-            applyBaseNodeStyles();
-            reSpread();
+            applyBaseNodeStyles(); reSpread();
             document.getElementById("btn-escalation").classList.remove("active");
             document.getElementById("btn-full").classList.add("active");
         }
-
         function showEscalation() {
             nodes.clear(); edges.clear();
             nodes.add(graphRaw.nodes); edges.add(graphRaw.edges);
-            applyBaseNodeStyles();
-            reSpread();
+            applyBaseNodeStyles(); reSpread();
             document.getElementById("btn-full").classList.remove("active");
             document.getElementById("btn-escalation").classList.add("active");
         }
+        function resetGraph() { filterGraphBySeverity('ALL'); showEscalation(); }
 
-        function resetGraph() { showEscalation(); }
-
-        /* ================= ATTACK PANEL ================= */
+        /*  ATTACK PANEL  */
         function openPanel(finding) {
             document.getElementById("attackPanel").classList.remove("hidden");
-
             const cf = finding.condition_flags || {};
             let conditionHtml = "";
-            if (cf.requires_mfa) {
-                conditionHtml += `<span class="condition-badge condition-mfa">🔐 MFA Required — risk reduced</span><br>`;
-            }
-            if (cf.requires_external_id) {
-                conditionHtml += `<span class="condition-badge condition-extid">🔑 ExternalId Required — risk reduced</span><br>`;
-            }
-            if (conditionHtml) {
-                conditionHtml = `<br><strong>Condition Protections:</strong><br>${conditionHtml}`;
-            }
-
+            if (cf.requires_mfa)       conditionHtml += `<span class="condition-badge condition-mfa">🔐 MFA Required</span><br>`;
+            if (cf.requires_external_id) conditionHtml += `<span class="condition-badge condition-extid">🔑 ExternalId Required</span><br>`;
+            if (conditionHtml) conditionHtml = `<br><strong>Condition Protections:</strong><br>${conditionHtml}`;
             document.getElementById("attackSummary").innerHTML = `
                 <strong>Initial Principal:</strong> ${finding.principal}<br>
                 <strong>Final Capability:</strong> ${finding.capability}<br>
                 <strong>Severity:</strong> ${finding.severity}<br>
-                <strong>MITRE Technique:</strong> ${finding.mitre}
-                ${conditionHtml}
-            `;
+                <strong>MITRE Technique:</strong> ${finding.mitre}${conditionHtml}`;
             generateAttackSteps(finding.path);
-            document.getElementById("attackImpact").innerText = generateImpact(finding);
+            document.getElementById("attackImpact").innerText    = generateImpact(finding);
             document.getElementById("attackMitigation").innerText = generateMitigation(finding);
         }
-
-        function closePanel() {
-            document.getElementById("attackPanel").classList.add("hidden");
-        }
+        function closePanel() { document.getElementById("attackPanel").classList.add("hidden"); }
 
         function generateAttackSteps(path) {
             const list = document.getElementById("attackSteps");
@@ -665,34 +760,26 @@
                 list.appendChild(li);
             }
         }
-
-        function cleanName(v) {
-            return v.replace("CAPABILITY::", "").replace("ACTION::", "").replace("ROLE::", "");
-        }
+        function cleanName(v) { return v.replace("CAPABILITY::", "").replace("ACTION::", "").replace("ROLE::", ""); }
 
         function generateImpact(finding) {
             const p = finding.pattern, steps = finding.path.length;
             if (p.includes("PASSROLE_COMPUTE_EXECUTION"))
-                return `The attacker can pass a privileged IAM role to a compute service (EC2/Lambda).\n\nThis enables:\n• Deployment of backdoor infrastructure\n• Data exfiltration via compute credentials\n• Persistent access bypassing user-level restrictions\n• Full cloud environment compromise`;
+                return `The attacker can pass a privileged IAM role to a compute service (EC2/Lambda).\n\n• Deployment of backdoor infrastructure\n• Data exfiltration via compute credentials\n• Persistent access bypassing user restrictions\n• Full cloud environment compromise`;
             if (p.includes("CROSS_ACCOUNT_PIVOT"))
-                return `This escalation crosses AWS account boundaries.\n\nThis enables:\n• Lateral movement into other AWS accounts\n• Multi-account compromise\n• Bypassing account-level isolation controls\n• Significantly increased blast radius`;
+                return `This escalation crosses AWS account boundaries.\n\n• Lateral movement into other AWS accounts\n• Multi-account compromise\n• Bypassing account-level isolation controls\n• Significantly increased blast radius`;
             if (p.includes("ROLE_ASSUMPTION_ABUSE"))
-                return `The attacker can assume a more privileged IAM role through trust policy abuse.\n\nThis enables:\n• Administrative access escalation\n• Cross-role privilege chaining\n• Access to sensitive AWS services`;
-            return `Multi-hop privilege escalation (${steps} steps) increasing effective permissions.\nLonger chains are harder to detect. Can lead to data exposure, service disruption, or infrastructure takeover.`;
+                return `The attacker can assume a more privileged IAM role.\n\n• Administrative access escalation\n• Cross-role privilege chaining\n• Access to sensitive AWS services`;
+            return `Multi-hop privilege escalation (${steps} steps).\nLonger chains are harder to detect. Can lead to data exposure, service disruption, or infrastructure takeover.`;
         }
-
         function generateMitigation(finding) {
             const p = finding.pattern;
-            if (p.includes("PASSROLE"))
-                return `• Restrict iam:PassRole to explicitly approved roles only\n• Avoid wildcard role passing (*)\n• Implement IAM permission boundaries\n• Monitor role attachment events via CloudTrail`;
-            if (p.includes("CROSS_ACCOUNT"))
-                return `• Audit all cross-account trust relationships\n• Require sts:ExternalId conditions\n• Implement Service Control Policies (SCPs)\n• Limit account-to-account IAM trust`;
-            if (p.includes("ASSUME"))
-                return `• Tighten IAM role trust policies\n• Remove unnecessary AssumeRole permissions\n• Enforce MFA conditions for role assumption\n• Apply least-privilege role design`;
+            if (p.includes("PASSROLE"))   return `• Restrict iam:PassRole to explicitly approved roles only\n• Avoid wildcard role passing (*)\n• Implement IAM permission boundaries\n• Monitor role attachment events via CloudTrail`;
+            if (p.includes("CROSS_ACCOUNT")) return `• Audit all cross-account trust relationships\n• Require sts:ExternalId conditions\n• Implement Service Control Policies (SCPs)\n• Limit account-to-account IAM trust`;
+            if (p.includes("ASSUME"))     return `• Tighten IAM role trust policies\n• Remove unnecessary AssumeRole permissions\n• Enforce MFA conditions for role assumption\n• Apply least-privilege role design`;
             return `• Review IAM policies for wildcard permissions\n• Remove excessive privileges\n• Apply least privilege principles\n• Enable continuous IAM posture monitoring`;
         }
     </script>
 
 </body>
-
 </html>

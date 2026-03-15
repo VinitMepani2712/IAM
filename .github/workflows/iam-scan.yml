@@ -1,0 +1,82 @@
+name: IAM Privilege Escalation Scan
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**.json"
+      - "**.tf"
+      - "**.py"
+  pull_request:
+    branches: [main]
+    paths:
+      - "**.json"
+      - "**.tf"
+      - "**.py"
+
+jobs:
+  scan:
+    name: Analyse IAM Configuration
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Setup ───────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── Scan ────────────────────────────────────────────────────────────────
+      - name: Run IAM escalation analysis
+        id: scan
+        run: |
+          python main.py aws_export.json --pdf 2>&1 | tee scan_output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      # ── Summary ─────────────────────────────────────────────────────────────
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## IAM Defender Scan Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat scan_output.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Upload PDF report as artifact ────────────────────────────────────────
+      - name: Upload PDF report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iam-risk-report
+          path: iam_risk_report.pdf
+          if-no-files-found: warn
+          retention-days: 30
+
+      # ── Upload JSON findings ─────────────────────────────────────────────────
+      - name: Upload JSON findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iam-findings-json
+          path: iam_risk_report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      # ── Fail on CRITICAL findings ────────────────────────────────────────────
+      - name: Check for CRITICAL findings
+        run: |
+          if grep -q "CRITICAL" scan_output.txt; then
+            CRITICAL_COUNT=$(grep -c "CRITICAL" scan_output.txt || true)
+            echo "::error::$CRITICAL_COUNT CRITICAL privilege escalation path(s) detected. Review the uploaded PDF report."
+            exit 1
+          else
+            echo "No CRITICAL findings. Scan passed."
+          fi
