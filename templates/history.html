@@ -52,19 +52,46 @@
                     <strong style="color: white;">{{ scans|length }}</strong> record{{ 's' if scans|length != 1 else '' }}
                 </p>
             </div>
-            <a href="/" class="btn-export" title="Run a new scan">
-                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path d="M12 5v14M5 12h14"/>
-                </svg>
-                New Scan
-            </a>
+            <div style="display:flex;gap:10px;align-items:center;">
+                <a id="compareBtn" href="#" class="btn-export" title="Compare two selected scans"
+                   style="display:none;background:#7c3aed;">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M8 7h12M8 12h12M8 17h12M3 7h.01M3 12h.01M3 17h.01"/>
+                    </svg>
+                    Compare Selected
+                </a>
+                <a href="/" class="btn-export" title="Run a new scan">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    New Scan
+                </a>
+            </div>
         </header>
+
+        {% if scans|length >= 2 %}
+        <section class="card" style="padding:20px 24px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <h3 style="margin:0;font-size:0.9rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Risk Trend</h3>
+                <span style="font-size:0.75rem;color:var(--text-muted);">Last {{ scans|length }} scans</span>
+            </div>
+            <div style="height:180px;position:relative;">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </section>
+        {% endif %}
 
         {% if scans %}
         <section class="card table-wrapper">
+            {% if scans|length >= 2 %}
+            <p style="padding:10px 16px 0;font-size:0.78rem;color:var(--text-muted);">
+                Select exactly 2 scans to compare &nbsp;&#x2192;&nbsp; <strong style="color:#7c3aed;">Compare Selected</strong> button will appear above.
+            </p>
+            {% endif %}
             <table id="historyTable">
                 <thead>
                     <tr>
+                        <th style="width:36px;text-align:center;"></th>
                         <th style="width:50px">#</th>
                         <th>Date</th>
                         <th>File</th>
@@ -80,6 +107,10 @@
                 <tbody>
                     {% for s in scans %}
                     <tr class="history-row">
+                        <td style="text-align:center;">
+                            <input type="checkbox" class="scan-select" value="{{ s.id }}"
+                                   style="width:15px;height:15px;cursor:pointer;accent-color:#7c3aed;">
+                        </td>
                         <td style="color:var(--text-muted);font-size:0.8rem;">{{ s.id }}</td>
                         <td style="font-size:0.82rem;color:var(--text-muted);">{{ s.created_at }}</td>
                         <td>
@@ -149,6 +180,58 @@
 
     </main>
 
-    <script>feather.replace();</script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+    feather.replace();
+
+    // ── Trend chart ───────────────────────────────────────────────────────────
+    fetch('/api/trend')
+        .then(r => r.json())
+        .then(data => {
+            if (!data || data.length < 2) return;
+            const ctx = document.getElementById('trendChart');
+            if (!ctx) return;
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(s => '#' + s.id + ' ' + (s.filename || '').substring(0,18)),
+                    datasets: [
+                        { label: 'Critical', data: data.map(s => s.critical), borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', tension: 0.3, fill: true },
+                        { label: 'High',     data: data.map(s => s.high),     borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.08)', tension: 0.3, fill: true },
+                        { label: 'Medium',   data: data.map(s => s.medium),   borderColor: '#eab308', backgroundColor: 'rgba(234,179,8,0.07)',  tension: 0.3 },
+                        { label: 'Low',      data: data.map(s => s.low),      borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.07)',  tension: 0.3 },
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 12 } } },
+                    scales: {
+                        x: { ticks: { color: '#64748b', maxRotation: 30 }, grid: { color: '#1e293b' } },
+                        y: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' }, beginAtZero: true }
+                    }
+                }
+            });
+        });
+
+    // ── Compare selection ─────────────────────────────────────────────────────
+    const compareBtn = document.getElementById('compareBtn');
+    function updateCompareBtn() {
+        const checked = document.querySelectorAll('.scan-select:checked');
+        if (checked.length === 2) {
+            compareBtn.style.display = 'inline-flex';
+            const ids = Array.from(checked).map(cb => cb.value).sort((a,b) => a-b);
+            compareBtn.href = '/compare?a=' + ids[0] + '&b=' + ids[1];
+        } else {
+            compareBtn.style.display = 'none';
+        }
+    }
+    document.querySelectorAll('.scan-select').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const checked = document.querySelectorAll('.scan-select:checked');
+            if (checked.length > 2) cb.checked = false;
+            updateCompareBtn();
+        });
+    });
+    </script>
 </body>
 </html>

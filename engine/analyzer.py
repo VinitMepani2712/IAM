@@ -18,10 +18,10 @@ log = logging.getLogger(__name__)
 # Full Environment Analysis (Web Safe)
 # =========
 
-def analyze_environment_data(principals):
+def analyze_environment_data(principals, scps=None):
 
     log.info("Starting environment analysis — %d principals", len(principals))
-    graph = build_attack_graph(principals)
+    graph = build_attack_graph(principals, scps=scps)
     log.debug("Attack graph built — %d nodes", len(graph.nodes))
 
     # ── Pre-compute which principals are reachable FROM other principals ──────
@@ -116,6 +116,9 @@ def analyze_environment_data(principals):
             condition_flags = {
                 "requires_mfa":         False,
                 "requires_external_id": False,
+                "source_ip_restricted": False,
+                "org_id_required":      False,
+                "region_restricted":    False,
                 "condition_summary":    [],
             }
             for node in path:
@@ -123,7 +126,7 @@ def analyze_environment_data(principals):
                 if not p_obj:
                     continue
                 tc_map = getattr(p_obj, "trust_conditions", {}) or {}
-                for trusted_arn, tc in tc_map.items():
+                for _, tc in tc_map.items():
                     if tc.requires_mfa:
                         condition_flags["requires_mfa"] = True
                         condition_flags["condition_summary"].append(
@@ -135,6 +138,21 @@ def analyze_environment_data(principals):
                         condition_flags["condition_summary"].append(
                             f"{node}: ExternalId{eid_str} required"
                         )
+                    if tc.source_ip_restricted:
+                        condition_flags["source_ip_restricted"] = True
+                        condition_flags["condition_summary"].append(
+                            f"{node}: Source IP restricted"
+                        )
+                    if tc.org_id_required:
+                        condition_flags["org_id_required"] = True
+                        condition_flags["condition_summary"].append(
+                            f"{node}: Org ID required"
+                        )
+                    if tc.region_restricted:
+                        condition_flags["region_restricted"] = True
+                        condition_flags["condition_summary"].append(
+                            f"{node}: Region restricted"
+                        )
 
             risk = compute_risk(
                 capability_class=cap_class,
@@ -143,6 +161,9 @@ def analyze_environment_data(principals):
                 cross_account=cross_account,
                 requires_mfa=condition_flags["requires_mfa"],
                 requires_external_id=condition_flags["requires_external_id"],
+                source_ip_restricted=condition_flags["source_ip_restricted"],
+                org_id_required=condition_flags["org_id_required"],
+                region_restricted=condition_flags["region_restricted"],
             )
 
             severity = classify_severity(risk)

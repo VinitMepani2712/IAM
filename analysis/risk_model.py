@@ -8,6 +8,9 @@ def compute_risk(
     cross_account: bool = False,
     requires_mfa: bool = False,
     requires_external_id: bool = False,
+    source_ip_restricted: bool = False,
+    org_id_required: bool = False,
+    region_restricted: bool = False,
 ) -> float:
     """
     Compute a 0–100 risk score for an escalation path.
@@ -72,10 +75,15 @@ def compute_risk(
     capped = min(raw, 100)
 
     # ── 6. Condition mitigations ─────────────────────────────────────────────
-    # Applied AFTER cap so MFA/ExternalId always visibly reduce displayed score.
+    # Applied AFTER cap so mitigations always visibly reduce the displayed score.
+    # MFA and ExternalId are strong controls; IP/Org/Region are network-layer
+    # restrictions that reduce exploitability from external actors.
     mfa_reduction    = -15 if requires_mfa else 0
     ext_id_reduction = -10 if requires_external_id else 0
-    score = capped + mfa_reduction + ext_id_reduction
+    ip_reduction     =  -8 if source_ip_restricted else 0
+    org_reduction    =  -5 if org_id_required else 0
+    region_reduction =  -5 if region_restricted else 0
+    score = capped + mfa_reduction + ext_id_reduction + ip_reduction + org_reduction + region_reduction
 
     return round(max(0.0, min(float(score), 100.0)), 1)
 

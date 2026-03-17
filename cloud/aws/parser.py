@@ -1,6 +1,6 @@
 import json
 import os
-from core.entities import Principal, PolicyStatement, TrustCondition
+from core.entities import Principal, PolicyStatement, TrustCondition, SCPStatement
 
 
 def _ensure_list(x):
@@ -28,6 +28,9 @@ def _parse_condition(condition_block: dict) -> TrustCondition:
     Detects:
       - aws:MultiFactorAuthPresent: "true"  → requires_mfa
       - sts:ExternalId                       → requires_external_id
+      - aws:SourceIp / aws:SourceVpc         → source_ip_restricted
+      - aws:PrincipalOrgID                   → org_id_required
+      - aws:RequestedRegion                  → region_restricted
     """
     if not condition_block:
         return TrustCondition()
@@ -35,9 +38,11 @@ def _parse_condition(condition_block: dict) -> TrustCondition:
     requires_mfa         = False
     requires_external_id = False
     external_id_value    = None
+    source_ip_restricted = False
+    org_id_required      = False
+    region_restricted    = False
 
-    for operator, conditions in condition_block.items():
-        op = operator.lower()
+    for _, conditions in condition_block.items():
         for key, value in (conditions or {}).items():
             key_l = key.lower()
 
@@ -47,14 +52,29 @@ def _parse_condition(condition_block: dict) -> TrustCondition:
                     requires_mfa = True
 
             # ExternalId check
-            if key_l == "sts:externalid":
+            elif key_l == "sts:externalid":
                 requires_external_id = True
                 external_id_value    = str(value) if value else None
+
+            # Source IP / VPC restriction
+            elif key_l in ("aws:sourceip", "aws:sourcevpc", "aws:sourcevpce"):
+                source_ip_restricted = True
+
+            # Org ID requirement (restricts to principals within the org)
+            elif key_l == "aws:principalorgid":
+                org_id_required = True
+
+            # Region restriction
+            elif key_l == "aws:requestedregion":
+                region_restricted = True
 
     return TrustCondition(
         requires_mfa=requires_mfa,
         requires_external_id=requires_external_id,
         external_id_value=external_id_value,
+        source_ip_restricted=source_ip_restricted,
+        org_id_required=org_id_required,
+        region_restricted=region_restricted,
         raw=condition_block,
     )
 
@@ -99,7 +119,37 @@ def _extract_trusts_from_assume_doc(assume_doc: dict) -> set:
     return trusts
 
 
+def _parse_scps(scp_list: list) -> list:
+    """
+    Parse a list of SCP dicts into SCPStatement objects.
+
+    Expected format per entry:
+        {
+            "AccountId": "*",          # optional, defaults to "*"
+            "PolicyDocument": {
+                "Statement": [ ... ]   # standard policy statement format
+            }
+        }
+    """
+    scps = []
+    for entry in scp_list or []:
+        account_id = str(entry.get("AccountId", "*"))
+        doc        = entry.get("PolicyDocument", {}) or {}
+        statements = []
+        for stmt in doc.get("Statement", []) or []:
+            statements.append(_stmt_to_policy_statement(stmt))
+        if statements:
+            scps.append(SCPStatement(account_id=account_id, statements=statements))
+    return scps
+
+
 def parse_aws_iam_json(source):
+    """
+    Parse IAM JSON and return (principals, scps).
+
+    principals — dict[name → Principal]
+    scps       — list[SCPStatement]  (empty list if no SCPs in the file)
+    """
 
     # ── Load JSON ─────────────────────────────────────────────────────────────
     if isinstance(source, str):
@@ -155,7 +205,8 @@ def parse_aws_iam_json(source):
             principal_obj.attached_managed_policies = role.get("AttachedManagedPolicies", [])
             principals[name] = principal_obj
 
-        return principals
+        scps = _parse_scps(data.get("ServiceControlPolicies", []))
+        return principals, scps
 
     # ── FORMAT B: Enterprise Simulation ──────────────────────────────────────
     if "Accounts" in data and isinstance(data["Accounts"], list):
@@ -190,6 +241,8 @@ def parse_aws_iam_json(source):
                     trust_conditions=trust_conditions,
                 )
 
-        return principals
+        # Top-level SCPs apply to all accounts in the simulation
+        scps = _parse_scps(data.get("ServiceControlPolicies", []))
+        return principals, scps
 
     raise ValueError("Unsupported IAM JSON format.")

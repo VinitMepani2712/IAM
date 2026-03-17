@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan Comparison — IAM Defender</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+    <script src="https://unpkg.com/feather-icons"></script>
+    <style>
+        .compare-header { display:grid; grid-template-columns:1fr auto 1fr; gap:20px; align-items:center; margin-bottom:24px; }
+        .scan-card { background:var(--card-bg); border:1px solid var(--border); border-radius:10px; padding:18px 20px; }
+        .scan-card h3 { margin:0 0 8px; font-size:0.8rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); }
+        .scan-card .filename { font-weight:700; font-size:1rem; color:var(--text-main); margin-bottom:4px; word-break:break-all; }
+        .scan-card .meta { font-size:0.78rem; color:var(--text-muted); }
+        .vs-badge { text-align:center; font-size:1.4rem; font-weight:800; color:#475569; }
+        .delta-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:24px; }
+        .delta-card { background:var(--card-bg); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center; }
+        .delta-card .label { font-size:0.72rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin-bottom:8px; }
+        .delta-card .value { font-size:1.6rem; font-weight:800; }
+        .delta-pos { color:#ef4444; }
+        .delta-neg { color:#22c55e; }
+        .delta-zero { color:#64748b; }
+        .section-title { font-size:0.8rem; text-transform:uppercase; letter-spacing:.07em; color:var(--text-muted); margin:0 0 12px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+        .finding-row td { padding:10px 12px; border-bottom:1px solid #1e293b; font-size:0.82rem; }
+        .finding-row:last-child td { border-bottom:none; }
+        .badge-new  { background:#7f1d1d; color:#fca5a5; padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700; }
+        .badge-fixed{ background:#14532d; color:#86efac; padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700; }
+        .badge-worse{ background:#431407; color:#fdba74; padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700; }
+        .badge-better{background:#14532d; color:#86efac; padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700; }
+        .empty-state { padding:40px; text-align:center; color:var(--text-muted); font-size:0.85rem; }
+    </style>
+</head>
+<body>
+
+<aside class="sidebar">
+    <div class="brand">
+        <i data-feather="shield"></i>
+        <span>IAM Defender</span>
+    </div>
+    <div class="nav-label">Navigation</div>
+    <a class="nav-item" href="/">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+        </svg>
+        Upload &amp; Analyze
+    </a>
+    <a class="nav-item" href="/dashboard">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3"/>
+        </svg>
+        Dashboard
+    </a>
+    <a class="nav-item active" href="/history-page">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        Scan History
+    </a>
+</aside>
+
+<main class="main-content">
+
+    <header class="top-bar">
+        <div>
+            <h1>Scan Comparison</h1>
+            <p style="color:var(--text-muted);margin-top:6px;">Baseline vs. new scan — what changed?</p>
+        </div>
+        <a href="/history-page" class="btn-export">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
+            Back to History
+        </a>
+    </header>
+
+    <!-- Scan metadata cards -->
+    <div class="compare-header">
+        <div class="scan-card">
+            <h3>Baseline (Scan #{{ scan_a.id }})</h3>
+            <div class="filename">{{ scan_a.filename }}</div>
+            <div class="meta">{{ scan_a.created_at }} &nbsp;·&nbsp; {{ scan_a.total_principals }} principals</div>
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                <span class="severity-pill severity-critical">{{ scan_a.critical }} Critical</span>
+                <span class="severity-pill severity-high">{{ scan_a.high }} High</span>
+                <span class="severity-pill severity-medium">{{ scan_a.medium }} Med</span>
+                <span class="severity-pill severity-low">{{ scan_a.low }} Low</span>
+            </div>
+        </div>
+        <div class="vs-badge">VS</div>
+        <div class="scan-card">
+            <h3>New Scan (Scan #{{ scan_b.id }})</h3>
+            <div class="filename">{{ scan_b.filename }}</div>
+            <div class="meta">{{ scan_b.created_at }} &nbsp;·&nbsp; {{ scan_b.total_principals }} principals</div>
+            <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                <span class="severity-pill severity-critical">{{ scan_b.critical }} Critical</span>
+                <span class="severity-pill severity-high">{{ scan_b.high }} High</span>
+                <span class="severity-pill severity-medium">{{ scan_b.medium }} Med</span>
+                <span class="severity-pill severity-low">{{ scan_b.low }} Low</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delta summary -->
+    <div class="delta-grid">
+        {% set d = delta %}
+        <div class="delta-card">
+            <div class="label">Total Findings</div>
+            <div class="value {% if d.total > 0 %}delta-pos{% elif d.total < 0 %}delta-neg{% else %}delta-zero{% endif %}">
+                {% if d.total > 0 %}+{% endif %}{{ d.total }}
+            </div>
+        </div>
+        <div class="delta-card">
+            <div class="label">Critical Δ</div>
+            <div class="value {% if d.critical > 0 %}delta-pos{% elif d.critical < 0 %}delta-neg{% else %}delta-zero{% endif %}">
+                {% if d.critical > 0 %}+{% endif %}{{ d.critical }}
+            </div>
+        </div>
+        <div class="delta-card">
+            <div class="label">High Δ</div>
+            <div class="value {% if d.high > 0 %}delta-pos{% elif d.high < 0 %}delta-neg{% else %}delta-zero{% endif %}">
+                {% if d.high > 0 %}+{% endif %}{{ d.high }}
+            </div>
+        </div>
+        <div class="delta-card">
+            <div class="label">New Findings</div>
+            <div class="value {% if new_findings %}delta-pos{% else %}delta-zero{% endif %}">{{ new_findings|length }}</div>
+        </div>
+        <div class="delta-card">
+            <div class="label">Fixed Findings</div>
+            <div class="value {% if fixed_findings %}delta-neg{% else %}delta-zero{% endif %}">{{ fixed_findings|length }}</div>
+        </div>
+    </div>
+
+    <!-- New findings (regressions) -->
+    <section class="card" style="margin-bottom:20px;">
+        <h2 class="section-title" style="padding:18px 20px 0;">
+            <span class="badge-new">NEW</span>&nbsp; {{ new_findings|length }} New Finding{{ 's' if new_findings|length != 1 else '' }}
+            <span style="font-size:0.75rem;font-weight:400;color:var(--text-muted);margin-left:8px;">present in new scan, absent in baseline</span>
+        </h2>
+        {% if new_findings %}
+        <div class="table-wrapper" style="padding:0;">
+            <table>
+                <thead><tr>
+                    <th>Principal</th><th>Capability</th><th>Pattern</th>
+                    <th style="text-align:center">Risk</th><th style="text-align:center">Severity</th>
+                    <th style="text-align:center">Cross-Acct</th>
+                </tr></thead>
+                <tbody>
+                {% for f in new_findings %}
+                <tr class="finding-row">
+                    <td style="font-weight:600;">{{ f.principal }}</td>
+                    <td><code style="font-size:0.78rem;color:#7dd3fc;">{{ f.capability }}</code></td>
+                    <td style="color:var(--text-muted);font-size:0.78rem;">{{ f.pattern }}</td>
+                    <td style="text-align:center;font-weight:700;">{{ f.risk }}</td>
+                    <td style="text-align:center;"><span class="severity-pill severity-{{ f.severity|lower }}">{{ f.severity }}</span></td>
+                    <td style="text-align:center;">{% if f.cross_account %}<span style="color:#ef4444;">✓</span>{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">No new findings — no regressions introduced.</div>
+        {% endif %}
+    </section>
+
+    <!-- Fixed findings (improvements) -->
+    <section class="card" style="margin-bottom:20px;">
+        <h2 class="section-title" style="padding:18px 20px 0;">
+            <span class="badge-fixed">FIXED</span>&nbsp; {{ fixed_findings|length }} Fixed Finding{{ 's' if fixed_findings|length != 1 else '' }}
+            <span style="font-size:0.75rem;font-weight:400;color:var(--text-muted);margin-left:8px;">present in baseline, resolved in new scan</span>
+        </h2>
+        {% if fixed_findings %}
+        <div class="table-wrapper" style="padding:0;">
+            <table>
+                <thead><tr>
+                    <th>Principal</th><th>Capability</th><th>Pattern</th>
+                    <th style="text-align:center">Risk</th><th style="text-align:center">Severity</th>
+                </tr></thead>
+                <tbody>
+                {% for f in fixed_findings %}
+                <tr class="finding-row">
+                    <td style="font-weight:600;">{{ f.principal }}</td>
+                    <td><code style="font-size:0.78rem;color:#7dd3fc;">{{ f.capability }}</code></td>
+                    <td style="color:var(--text-muted);font-size:0.78rem;">{{ f.pattern }}</td>
+                    <td style="text-align:center;font-weight:700;">{{ f.risk }}</td>
+                    <td style="text-align:center;"><span class="severity-pill severity-{{ f.severity|lower }}">{{ f.severity }}</span></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">No findings were resolved between these two scans.</div>
+        {% endif %}
+    </section>
+
+    <!-- Risk changes for persisted findings -->
+    {% if worsened or improved %}
+    <section class="card" style="margin-bottom:20px;">
+        <h2 class="section-title" style="padding:18px 20px 0;">
+            Risk Changes &nbsp;<span style="font-size:0.75rem;font-weight:400;color:var(--text-muted);">{{ persisted }} findings persisted — {{ worsened|length }} worsened, {{ improved|length }} improved</span>
+        </h2>
+        <div class="table-wrapper" style="padding:0;">
+            <table>
+                <thead><tr>
+                    <th>Principal</th><th>Capability</th>
+                    <th style="text-align:center">New Risk</th><th style="text-align:center">Δ Risk</th>
+                    <th style="text-align:center">Status</th>
+                </tr></thead>
+                <tbody>
+                {% for f in worsened %}
+                <tr class="finding-row">
+                    <td style="font-weight:600;">{{ f.principal }}</td>
+                    <td><code style="font-size:0.78rem;color:#7dd3fc;">{{ f.capability }}</code></td>
+                    <td style="text-align:center;font-weight:700;">{{ f.risk }}</td>
+                    <td style="text-align:center;color:#ef4444;font-weight:700;">+{{ f.risk_delta }}</td>
+                    <td style="text-align:center;"><span class="badge-worse">WORSE</span></td>
+                </tr>
+                {% endfor %}
+                {% for f in improved %}
+                <tr class="finding-row">
+                    <td style="font-weight:600;">{{ f.principal }}</td>
+                    <td><code style="font-size:0.78rem;color:#7dd3fc;">{{ f.capability }}</code></td>
+                    <td style="text-align:center;font-weight:700;">{{ f.risk }}</td>
+                    <td style="text-align:center;color:#22c55e;font-weight:700;">{{ f.risk_delta }}</td>
+                    <td style="text-align:center;"><span class="badge-better">IMPROVED</span></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+</main>
+
+<script>feather.replace();</script>
+</body>
+</html>

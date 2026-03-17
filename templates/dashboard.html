@@ -34,6 +34,19 @@
     <div id="toast-container"></div>
 
     <!--  SUPPRESSION MODAL  -->
+    <!-- AI Remediation Modal -->
+    <div class="modal-overlay" id="aiModal" onclick="closeAIModal(event)">
+        <div class="modal-box" style="max-width:680px;">
+            <div class="modal-header">
+                <h3>AI Remediation</h3>
+                <button class="modal-close" onclick="closeAIModal()">✕ Close</button>
+            </div>
+            <div class="modal-body" id="aiModalBody" style="padding:20px;">
+                <div class="modal-empty">Loading…</div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="suppressModal" onclick="closeSuppressionModal(event)">
         <div class="modal-box">
             <div class="modal-header">
@@ -107,6 +120,14 @@
                 </p>
             </div>
             <div style="display: flex; gap: 10px; align-items: center;">
+                <button onclick="exportCSV()" class="btn-export" title="Download findings as CSV">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Export CSV
+                </button>
                 <a href="/export/json" class="btn-export" title="Download findings as JSON">
                     <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -275,6 +296,14 @@
                 </h2>
                 <div class="table-controls">
                     <input type="text" id="searchInput" placeholder="Search findings...">
+                    <select id="patternFilter" onchange="applyTableFilters()"
+                        style="background:var(--card-bg);color:var(--text-main);border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:0.8rem;cursor:pointer;">
+                        <option value="">All Patterns</option>
+                        {% set patterns = findings | map(attribute='pattern') | unique | list %}
+                        {% for p in patterns %}
+                        <option value="{{ p }}">{{ p | replace('_', ' ') | title }}</option>
+                        {% endfor %}
+                    </select>
                     <button onclick="filterSeverity('ALL')"      class="sev-filter-btn active" id="sf-all">All</button>
                     <button onclick="filterSeverity('CRITICAL')" class="sev-filter-btn" id="sf-critical">Critical</button>
                     <button onclick="filterSeverity('HIGH')"     class="sev-filter-btn" id="sf-high">High</button>
@@ -323,16 +352,33 @@
                             {% if cf.get('requires_external_id') %}
                                 <span class="condition-badge condition-extid" title="ExternalId required — risk reduced">🔑 ExtID</span>
                             {% endif %}
-                            {% if not cf.get('requires_mfa') and not cf.get('requires_external_id') %}
+                            {% if cf.get('source_ip_restricted') %}
+                                <span class="condition-badge condition-extid" title="Source IP restricted — risk reduced">🌐 IP</span>
+                            {% endif %}
+                            {% if cf.get('org_id_required') %}
+                                <span class="condition-badge condition-extid" title="Org ID required — risk reduced">🏢 Org</span>
+                            {% endif %}
+                            {% if cf.get('region_restricted') %}
+                                <span class="condition-badge condition-extid" title="Region restricted — risk reduced">📍 Region</span>
+                            {% endif %}
+                            {% if not cf.get('requires_mfa') and not cf.get('requires_external_id') and not cf.get('source_ip_restricted') and not cf.get('org_id_required') and not cf.get('region_restricted') %}
                                 <span class="condition-badge condition-none" title="No conditions — path is fully unprotected">⚠ None</span>
                             {% endif %}
                         </td>
                         <td>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;">
                             <button class="btn-suppress"
                                 onclick="suppressFinding(this, '{{ f.principal | e }}', '{{ f.capability | e }}')"
                                 title="Mark as false positive">
                                 Suppress
                             </button>
+                            <button class="btn-suppress btn-ai-fix"
+                                data-idx="{{ loop.index0 }}"
+                                style="background:#1e3a5f;color:#7dd3fc;border:1px solid #1d4ed8;"
+                                title="Get AI-powered remediation suggestion">
+                                AI Fix
+                            </button>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -510,6 +556,35 @@
             if (loader) loader.style.display = "none";
         });
 
+        /* Node click → highlight all escalation paths through that node */
+        network.on("click", params => {
+            if (!params.nodes.length) { clearPathSelection(); return; }
+            const clickedNode = params.nodes[0];
+            const pathsThroughNode = allFindings
+                .filter(f => f.path && f.path.includes(clickedNode))
+                .map(f => f.path);
+            if (!pathsThroughNode.length) { clearPathSelection(); return; }
+            // Merge all paths into one union set for highlight
+            const nodeSet = new Set(pathsThroughNode.flat());
+            const edgeSet = new Set();
+            pathsThroughNode.forEach(path => {
+                for (let i = 0; i < path.length - 1; i++)
+                    edgeSet.add(`${path[i]}||${path[i+1]}`);
+            });
+            applyBaseNodeStyles();
+            nodes.forEach(n => { n.opacity = nodeSet.has(n.id) ? 1 : 0.1; nodes.update(n); });
+            edges.forEach(e => {
+                const key = `${e.from}||${e.to}`;
+                e.color = edgeSet.has(key) ? "#facc15" : "#1e293b";
+                e.width = edgeSet.has(key) ? 3 : 1;
+                edges.update(e);
+            });
+            // Also filter the findings table to matching rows
+            const sel = clickedNode.replace(/"/g,'');
+            document.getElementById("searchInput").value = sel.replace("CAPABILITY::","").replace("ACTION::","");
+            applyTableFilters();
+        });
+
         /*  HIGHLIGHT PATH  */
         function highlightPath(path) {
             applyBaseNodeStyles();
@@ -576,19 +651,38 @@
         document.getElementById("searchInput").addEventListener("keyup", applyTableFilters);
 
         function applyTableFilters() {
-            const filter = document.getElementById("searchInput").value.toLowerCase();
-            let visible  = 0;
+            const filter  = document.getElementById("searchInput").value.toLowerCase();
+            const pattern = document.getElementById("patternFilter")?.value || "";
+            let visible   = 0;
             document.querySelectorAll("#findingsTable tbody tr").forEach(row => {
-                const sev    = row.dataset.severity || "";
-                const text   = Array.from(row.cells).slice(0, 6).map(c => c.innerText.toLowerCase()).join(" ");
-                const sevOk  = activeSeverityFilter === 'ALL' || sev === activeSeverityFilter;
-                const textOk = !filter || text.includes(filter);
-                const show   = sevOk && textOk;
+                const sev     = row.dataset.severity || "";
+                const text    = Array.from(row.cells).slice(0, 6).map(c => c.innerText.toLowerCase()).join(" ");
+                const sevOk   = activeSeverityFilter === 'ALL' || sev === activeSeverityFilter;
+                const textOk  = !filter  || text.includes(filter);
+                const patOk   = !pattern || text.includes(pattern.toLowerCase().replace(/_/g, ' '));
+                const show    = sevOk && textOk && patOk;
                 row.style.display = show ? "" : "none";
                 if (show) visible++;
             });
             const badge = document.getElementById('findingsCountBadge');
             if (badge) badge.textContent = visible < totalFindings ? `${visible} / ${totalFindings}` : totalFindings;
+        }
+
+        /* CSV Export */
+        function exportCSV() {
+            const headers = ['Principal','Account','Capability','Risk','Severity','Pattern','MITRE','Cross-Account','Path'];
+            const rows = allFindings.map(f => [
+                f.principal, f.account_id || '', f.capability, f.risk, f.severity,
+                f.pattern, f.mitre, f.cross_account ? 'Yes' : 'No',
+                (f.path || []).join(' > ')
+            ].map(v => `"${String(v).replace(/"/g,'""')}"`).join(','));
+            const csv  = [headers.join(','), ...rows].join('\r\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a    = document.createElement('a');
+            a.href     = URL.createObjectURL(blob);
+            a.download = 'iam_findings.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
         }
 
         /*  TABLE SORT  */
@@ -779,7 +873,68 @@
             if (p.includes("ASSUME"))     return `• Tighten IAM role trust policies\n• Remove unnecessary AssumeRole permissions\n• Enforce MFA conditions for role assumption\n• Apply least-privilege role design`;
             return `• Review IAM policies for wildcard permissions\n• Remove excessive privileges\n• Apply least privilege principles\n• Enable continuous IAM posture monitoring`;
         }
+
+        // ── AI Fix ────────────────────────────────────────────────────────────
+        document.addEventListener('click', e => {
+            const btn = e.target.closest('.btn-ai-fix');
+            if (!btn) return;
+            const idx     = parseInt(btn.dataset.idx, 10);
+            const finding = allFindings[idx];
+            if (!finding) return;
+            openAIModal(btn, finding);
+        });
+
+        function openAIModal(btn, finding) {
+            const body = document.getElementById('aiModalBody');
+            body.innerHTML = `<div class="modal-empty" style="padding:40px;">
+                <svg style="width:28px;height:28px;margin:0 auto 12px;display:block;animation:spin 1s linear infinite;color:#3b82f6;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                Asking Claude for remediation advice…</div>`;
+            document.getElementById('aiModal').classList.add('open');
+            btn.disabled = true;
+
+            fetch('/api/remediate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(finding)
+            })
+            .then(r => r.json())
+            .then(data => {
+                btn.disabled = false;
+                if (data.error) {
+                    body.innerHTML = `<div style="color:#f87171;padding:20px;">${escHtml(data.error)}</div>`;
+                    return;
+                }
+                const steps = (data.remediation_steps || []).map(s => `<li style="margin-bottom:6px;">${escHtml(s)}</li>`).join('');
+                const policyCode = data.iam_policy_fix
+                    ? `<h4 style="color:#94a3b8;font-size:0.78rem;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 6px;">IAM Policy Fix</h4>
+                       <pre style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:14px;font-size:0.78rem;overflow-x:auto;color:#86efac;">${escHtml(data.iam_policy_fix)}</pre>` : '';
+                const tfCode = data.terraform_snippet
+                    ? `<h4 style="color:#94a3b8;font-size:0.78rem;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 6px;">Terraform</h4>
+                       <pre style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:14px;font-size:0.78rem;overflow-x:auto;color:#c4b5fd;">${escHtml(data.terraform_snippet)}</pre>` : '';
+                body.innerHTML = `
+                    <div style="margin-bottom:12px;padding:12px 14px;background:#0f172a;border-left:3px solid #3b82f6;border-radius:0 8px 8px 0;">
+                        <p style="margin:0;color:#cbd5e1;line-height:1.6;font-size:0.87rem;">${escHtml(data.explanation || '')}</p>
+                    </div>
+                    ${data.impact ? `<div style="margin-bottom:12px;padding:10px 14px;background:#1c0a09;border-left:3px solid #ef4444;border-radius:0 8px 8px 0;">
+                        <p style="margin:0;color:#fca5a5;line-height:1.6;font-size:0.84rem;"><strong>Impact:</strong> ${escHtml(data.impact)}</p></div>` : ''}
+                    <h4 style="color:#94a3b8;font-size:0.78rem;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 6px;">Remediation Steps</h4>
+                    <ol style="margin:0;padding-left:20px;color:#cbd5e1;font-size:0.84rem;line-height:1.7;">${steps}</ol>
+                    ${policyCode}${tfCode}`;
+            })
+            .catch(err => {
+                btn.disabled = false;
+                body.innerHTML = `<div style="color:#f87171;padding:20px;">Request failed: ${escHtml(String(err))}</div>`;
+            });
+        }
+
+        function closeAIModal(e) {
+            if (e && e.target !== document.getElementById('aiModal')) return;
+            document.getElementById('aiModal').classList.remove('open');
+        }
     </script>
+    <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
 
 </body>
 </html>

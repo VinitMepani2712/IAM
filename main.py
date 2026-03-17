@@ -33,6 +33,9 @@ def _build_condition_flags(path, principals):
     flags = {
         "requires_mfa":         False,
         "requires_external_id": False,
+        "source_ip_restricted": False,
+        "org_id_required":      False,
+        "region_restricted":    False,
         "condition_summary":    [],
     }
     for node in path:
@@ -48,6 +51,15 @@ def _build_condition_flags(path, principals):
                 flags["requires_external_id"] = True
                 eid_str = f" ({tc.external_id_value})" if tc.external_id_value else ""
                 flags["condition_summary"].append(f"{node}: ExternalId{eid_str} required")
+            if tc.source_ip_restricted:
+                flags["source_ip_restricted"] = True
+                flags["condition_summary"].append(f"{node}: Source IP restricted")
+            if tc.org_id_required:
+                flags["org_id_required"] = True
+                flags["condition_summary"].append(f"{node}: Org ID required")
+            if tc.region_restricted:
+                flags["region_restricted"] = True
+                flags["condition_summary"].append(f"{node}: Region restricted")
     return flags
 
 
@@ -74,9 +86,9 @@ def _save_pdf(findings, principals):
 # Deep Dive: Single Principal Analysis
 # =========
 
-def analyze_principal(principals, attacker, output_pdf=False):
+def analyze_principal(principals, attacker, scps=None, output_pdf=False):
 
-    graph = build_attack_graph(principals)
+    graph = build_attack_graph(principals, scps=scps)
     path  = find_minimal_escalation_path(graph, attacker)
 
     print("\n=== Minimal Escalation Path ===")
@@ -130,6 +142,9 @@ def analyze_principal(principals, attacker, output_pdf=False):
             cross_account=cross_account,
             requires_mfa=condition_flags["requires_mfa"],
             requires_external_id=condition_flags["requires_external_id"],
+            source_ip_restricted=condition_flags["source_ip_restricted"],
+            org_id_required=condition_flags["org_id_required"],
+            region_restricted=condition_flags["region_restricted"],
         )
         severity = classify_severity(risk)
 
@@ -190,9 +205,9 @@ def analyze_principal(principals, attacker, output_pdf=False):
 # Full Environment Audit
 # =========
 
-def analyze_environment(principals, output_pdf=False):
+def analyze_environment(principals, scps=None, output_pdf=False):
 
-    graph = build_attack_graph(principals)
+    graph = build_attack_graph(principals, scps=scps)
 
     print("\n=== Full Environment Escalation Audit ===\n")
     print("Principal | Escalation | Risk | Severity | Cross-Account | Pattern | MITRE")
@@ -245,6 +260,9 @@ def analyze_environment(principals, output_pdf=False):
                 cross_account=cross_account,
                 requires_mfa=condition_flags["requires_mfa"],
                 requires_external_id=condition_flags["requires_external_id"],
+                source_ip_restricted=condition_flags["source_ip_restricted"],
+                org_id_required=condition_flags["org_id_required"],
+                region_restricted=condition_flags["region_restricted"],
             )
             severity = classify_severity(risk)
 
@@ -371,25 +389,25 @@ Examples:
     # ---------------------------------------------------------
     if args.live:
         print("\nFetching IAM configuration from AWS...\n")
-        data       = fetch_account_authorization(profile=args.profile)
-        principals = parse_aws_iam_json(data)
+        data                = fetch_account_authorization(profile=args.profile)
+        principals, scps    = parse_aws_iam_json(data)
 
         if args.input:
-            analyze_principal(principals, args.input, output_pdf=args.pdf)
+            analyze_principal(principals, args.input, scps=scps, output_pdf=args.pdf)
         else:
-            analyze_environment(principals, output_pdf=args.pdf)
+            analyze_environment(principals, scps=scps, output_pdf=args.pdf)
         return
 
     # ---------------------------------------------------------
     # File Mode
     # ---------------------------------------------------------
     if args.input:
-        principals = parse_aws_iam_json(args.input)
+        principals, scps = parse_aws_iam_json(args.input)
 
         if args.principal:
-            analyze_principal(principals, args.principal, output_pdf=args.pdf)
+            analyze_principal(principals, args.principal, scps=scps, output_pdf=args.pdf)
         else:
-            analyze_environment(principals, output_pdf=args.pdf)
+            analyze_environment(principals, scps=scps, output_pdf=args.pdf)
         return
 
     # ---------------------------------------------------------

@@ -39,7 +39,7 @@ def analyze():
         return render_template("index.html", error=f"Invalid JSON file: {e}")
 
     try:
-        principals = parse_aws_iam_json(data)
+        principals, scps = parse_aws_iam_json(data)
     except Exception as e:
         log.exception("Failed to parse IAM data from '%s'", filename)
         return render_template("index.html", error=f"Failed to parse IAM data: {e}")
@@ -50,7 +50,7 @@ def analyze():
     scan_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     # Run analysis
-    findings, criticality, remediation = analyze_environment_data(principals)
+    findings, criticality, remediation = analyze_environment_data(principals, scps=scps)
 
     # Filter out suppressed (false-positive) findings
     try:
@@ -63,8 +63,8 @@ def analyze():
     top_critical     = list(criticality.items())[:5] if criticality else []
     top_critical_ids = [node for node, _ in top_critical[:3]]
 
-    # Build graph data
-    graph = build_attack_graph(principals)
+    # Build graph data (pass SCPs so deny edges are consistent with analysis)
+    graph = build_attack_graph(principals, scps=scps)
     nodes,      edges      = extract_graph_data(graph, findings=findings, escalation_only=True)
     full_nodes, full_edges = extract_graph_data(graph, findings=findings, escalation_only=False)
 
@@ -254,6 +254,99 @@ def history_scan(scan_id: int):
     if not scan:
         return jsonify({"error": "Scan not found"}), 404
     return jsonify(scan)
+
+
+@app.route("/compare")
+def compare_scans():
+    id_a = request.args.get("a", type=int)
+    id_b = request.args.get("b", type=int)
+    if not id_a or not id_b:
+        return redirect("/history-page")
+    result = db.compare_scans(id_a, id_b)
+    if not result:
+        return redirect("/history-page")
+    return render_template("compare.html", **result)
+
+
+@app.route("/api/trend")
+def trend_data():
+    """Return per-scan severity counts for the trend chart (oldest→newest)."""
+    return jsonify(db.get_trend_data())
+
+
+@app.route("/api/remediate", methods=["POST"])
+def ai_remediate():
+    """
+    Call Claude to generate plain-English explanation + remediation for a finding.
+    Requires ANTHROPIC_API_KEY environment variable.
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "ANTHROPIC_API_KEY not configured on this server."}), 503
+
+    try:
+        import anthropic
+    except ImportError:
+        return jsonify({"error": "anthropic package not installed. Run: pip install anthropic"}), 503
+
+    data       = request.get_json(silent=True) or {}
+    principal  = data.get("principal", "Unknown")
+    capability = data.get("capability", "Unknown")
+    severity   = data.get("severity", "Unknown")
+    risk       = data.get("risk", 0)
+    path       = data.get("path", [])
+    pattern    = data.get("pattern", "")
+    mitre      = data.get("mitre", "")
+    cross_acct = data.get("cross_account", False)
+    conditions = data.get("condition_flags", {})
+
+    path_str = " → ".join(path) if path else "N/A"
+    cond_summary = []
+    if conditions.get("requires_mfa"):         cond_summary.append("MFA required")
+    if conditions.get("requires_external_id"):  cond_summary.append("ExternalId required")
+    if conditions.get("source_ip_restricted"):  cond_summary.append("Source IP restricted")
+    if conditions.get("org_id_required"):       cond_summary.append("Org ID required")
+    if conditions.get("region_restricted"):     cond_summary.append("Region restricted")
+    cond_str = ", ".join(cond_summary) if cond_summary else "None"
+
+    prompt = f"""You are an AWS IAM security expert. Analyze this privilege escalation finding and provide actionable remediation.
+
+FINDING:
+- Principal: {principal}
+- Escalation Capability: {capability}
+- Severity: {severity} (Risk Score: {risk}/100)
+- Attack Pattern: {pattern}
+- MITRE ATT&CK: {mitre}
+- Cross-Account: {cross_acct}
+- Trust Conditions on Path: {cond_str}
+- Escalation Path: {path_str}
+
+Respond with EXACTLY this JSON structure (no markdown, no extra text):
+{{
+  "explanation": "2-3 sentence plain-English explanation of what this vulnerability means and how an attacker would exploit it",
+  "impact": "1-2 sentences on the business/security impact if exploited",
+  "remediation_steps": ["step 1", "step 2", "step 3"],
+  "iam_policy_fix": "JSON IAM policy statement that removes or restricts the dangerous permission",
+  "terraform_snippet": "Terraform HCL snippet to implement the fix (or empty string if not applicable)"
+}}"""
+
+    try:
+        client   = anthropic.Anthropic(api_key=api_key)
+        message  = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = message.content[0].text.strip()
+        # Parse the JSON response
+        result = json.loads(raw)
+        return jsonify(result)
+    except json.JSONDecodeError:
+        # Return raw text if JSON parse fails
+        return jsonify({"explanation": raw, "remediation_steps": [], "iam_policy_fix": "", "terraform_snippet": ""})
+    except Exception as e:
+        log.exception("AI remediation call failed")
+        return jsonify({"error": str(e)}), 500
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

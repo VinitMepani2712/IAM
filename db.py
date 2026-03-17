@@ -243,3 +243,90 @@ def remove_suppression(suppression_id: int) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM suppressions WHERE id = ?", (suppression_id,))
     log.info("Removed suppression id=%d", suppression_id)
+
+
+# ── Scan comparison & trend helpers ──────────────────────────────────────────
+
+def compare_scans(id_a: int, id_b: int) -> Optional[Dict[str, Any]]:
+    """
+    Compare two scans. scan_a is the baseline, scan_b is the newer scan.
+
+    Returns a dict with:
+        scan_a / scan_b  — metadata for each scan
+        new_findings     — findings in B not present in A  (regressions)
+        fixed_findings   — findings in A not present in B  (improvements)
+        worsened         — findings in both where risk increased in B
+        improved         — findings in both where risk decreased in B
+        persisted        — count of findings present in both scans unchanged
+        delta            — severity count deltas (positive = worse)
+    """
+    scan_a = get_scan(id_a)
+    scan_b = get_scan(id_b)
+    if not scan_a or not scan_b:
+        return None
+
+    def _key(f):
+        return (f["principal"], f["capability"], f.get("pattern", ""))
+
+    map_a = {_key(f): f for f in scan_a["findings"]}
+    map_b = {_key(f): f for f in scan_b["findings"]}
+
+    new_findings   = [map_b[k] for k in map_b if k not in map_a]
+    fixed_findings = [map_a[k] for k in map_a if k not in map_b]
+
+    worsened  = []
+    improved  = []
+    persisted = 0
+    for k in map_b:
+        if k in map_a:
+            persisted += 1
+            risk_a = map_a[k].get("risk", 0)
+            risk_b = map_b[k].get("risk", 0)
+            if risk_b > risk_a:
+                entry = dict(map_b[k])
+                entry["risk_delta"] = round(risk_b - risk_a, 1)
+                worsened.append(entry)
+            elif risk_b < risk_a:
+                entry = dict(map_b[k])
+                entry["risk_delta"] = round(risk_b - risk_a, 1)
+                improved.append(entry)
+
+    _meta_keys = ["id", "created_at", "filename", "total_findings",
+                  "critical", "high", "medium", "low", "total_principals"]
+
+    return {
+        "scan_a":        {k: scan_a[k] for k in _meta_keys},
+        "scan_b":        {k: scan_b[k] for k in _meta_keys},
+        "new_findings":  sorted(new_findings,   key=lambda f: f.get("risk", 0), reverse=True),
+        "fixed_findings": sorted(fixed_findings, key=lambda f: f.get("risk", 0), reverse=True),
+        "worsened":      sorted(worsened, key=lambda f: f.get("risk_delta", 0), reverse=True),
+        "improved":      sorted(improved, key=lambda f: f.get("risk_delta", 0)),
+        "persisted":     persisted,
+        "delta": {
+            "total":    len(scan_b["findings"]) - len(scan_a["findings"]),
+            "critical": scan_b["critical"] - scan_a["critical"],
+            "high":     scan_b["high"]     - scan_a["high"],
+            "medium":   scan_b["medium"]   - scan_a["medium"],
+            "low":      scan_b["low"]      - scan_a["low"],
+        },
+    }
+
+
+def get_trend_data(limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    Return per-scan severity counts ordered oldest→newest for trend charts.
+    Limited to the most recent `limit` scans.
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, created_at, filename, total_findings,
+                   critical, high, medium, low
+            FROM   scans
+            ORDER  BY id DESC
+            LIMIT  ?
+            """,
+            (limit,),
+        ).fetchall()
+    # Return oldest-first so chart renders left-to-right
+    return list(reversed([dict(r) for r in rows]))

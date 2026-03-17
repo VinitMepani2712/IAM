@@ -104,7 +104,17 @@ def _anode(action: str, target: str = None):
     return f"ACTION::{action}::{target}" if target else f"ACTION::{action}"
 
 
-def build_attack_graph(principals: dict):
+def _resource_match(deny_resource: str, actual_resource: str) -> bool:
+    """
+    Check if a deny resource pattern covers the actual resource.
+    Handles: exact match, "*", and ARN wildcard patterns (fnmatch).
+    """
+    if deny_resource == "*" or deny_resource == actual_resource:
+        return True
+    return _fnmatch.fnmatch(actual_resource.lower(), deny_resource.lower())
+
+
+def build_attack_graph(principals: dict, scps: list = None):
 
     g = AttackGraph()
 
@@ -130,6 +140,17 @@ def build_attack_graph(principals: dict):
         g.add_edge(caller, action_node)
         g.add_edge(action_node, target_role)
 
+    # ── Build SCP global deny set ─────────────────────────────────────────────
+    # SCPs act as a ceiling — if an action is denied here, no principal can
+    # perform it regardless of their IAM permissions.
+    scp_denies: set = set()
+    for scp in (scps or []):
+        for stmt in getattr(scp, "statements", []) or []:
+            if getattr(stmt, "effect", "") == "Deny":
+                for action in _actions(stmt):
+                    for resource in _resources(stmt):
+                        scp_denies.add((action.lower(), resource))
+
     # ── Parse policy statements ───────────────────────────────────────────────
     # Pre-build per-principal deny sets for fast lookup
     principal_denies = defaultdict(set)
@@ -141,14 +162,18 @@ def build_attack_graph(principals: dict):
                         principal_denies[name].add((action.lower(), resource))
 
     def _is_denied(caller: str, action: str, resource: str) -> bool:
-        """Return True if an explicit Deny covers this action+resource."""
-        denies = principal_denies.get(caller, set())
-        action_l = action.lower()
-        for (deny_action, deny_resource) in denies:
-            action_match = (deny_action == action_l or deny_action == "*" or
-                            deny_action == action_l.split(":")[0] + ":*")
-            resource_match = (deny_resource == "*" or deny_resource == resource)
-            if action_match and resource_match:
+        """
+        Return True if an explicit Deny (principal-level or SCP) covers
+        this action+resource. Uses the same wildcard logic as _has_action
+        so patterns like iam:Pass*, arn:aws:iam::*:role/* are handled.
+        """
+        # Check SCP-level denies first (org-wide, highest priority)
+        for (deny_action, deny_resource) in scp_denies:
+            if _has_action({deny_action}, action) and _resource_match(deny_resource, resource):
+                return True
+        # Check principal-level explicit denies
+        for (deny_action, deny_resource) in principal_denies.get(caller, set()):
+            if _has_action({deny_action}, action) and _resource_match(deny_resource, resource):
                 return True
         return False
 
