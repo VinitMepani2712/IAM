@@ -129,10 +129,19 @@ def _parse_boundary_doc(doc: dict) -> list:
     return statements
 
 
+def _parse_all_stmts(doc: dict) -> list:
+    """Parse ALL statements (Allow and Deny) from a PolicyDocument."""
+    return [_stmt_to_policy_statement(s) for s in (doc or {}).get("Statement", []) or []]
+
+
 def _build_policy_map(policies_list: list) -> dict:
     """
     Build ARN → List[PolicyStatement] from the top-level Policies array
-    in GetAccountAuthorizationDetails.  Used to resolve permission boundary ARNs.
+    in GetAccountAuthorizationDetails.
+
+    Includes ALL statements (Allow + Deny) so the map can be used both
+    for resolving attached managed policies on principals AND for
+    permission boundary resolution (caller filters to Allow as needed).
     """
     policy_map = {}
     for pol in policies_list or []:
@@ -142,7 +151,7 @@ def _build_policy_map(policies_list: list) -> dict:
         for version in pol.get("PolicyVersionList", []) or []:
             if version.get("IsDefaultVersion"):
                 doc = version.get("Document", {}) or {}
-                policy_map[arn] = _parse_boundary_doc(doc)
+                policy_map[arn] = _parse_all_stmts(doc)
                 break
     return policy_map
 
@@ -251,17 +260,23 @@ def parse_aws_iam_json(source):
             account_id = arn.split(":")[4] if arn and ":" in arn else "default"
 
             statements = []
+            # Inline policies
             for policy in user.get("UserPolicyList", []) or []:
                 doc = policy.get("PolicyDocument", {}) or {}
                 for stmt in doc.get("Statement", []) or []:
                     statements.append(_stmt_to_policy_statement(stmt))
+            # Attached managed policies — resolve full document from policy_map
+            for ap in user.get("AttachedManagedPolicies", []) or []:
+                arn = ap.get("PolicyArn", "")
+                if arn in policy_map:
+                    statements.extend(policy_map[arn])
 
-            # Permission boundary
+            # Permission boundary (Allow-only filter)
             boundary_stmts = []
             pb = user.get("PermissionsBoundary", {}) or {}
             pb_arn = pb.get("PermissionsBoundaryArn", "")
             if pb_arn and pb_arn in policy_map:
-                boundary_stmts = policy_map[pb_arn]
+                boundary_stmts = [s for s in policy_map[pb_arn] if s.effect == "Allow"]
             elif pb.get("PermissionsBoundaryDocument"):
                 boundary_stmts = _parse_boundary_doc(pb["PermissionsBoundaryDocument"])
 
@@ -282,17 +297,23 @@ def parse_aws_iam_json(source):
             trusts, trust_conditions = _extract_trusts_and_conditions(assume_doc)
 
             statements = []
+            # Inline policies
             for policy in role.get("RolePolicyList", []) or []:
                 doc = policy.get("PolicyDocument", {}) or {}
                 for stmt in doc.get("Statement", []) or []:
                     statements.append(_stmt_to_policy_statement(stmt))
+            # Attached managed policies — resolve full document from policy_map
+            for ap in role.get("AttachedManagedPolicies", []) or []:
+                arn = ap.get("PolicyArn", "")
+                if arn in policy_map:
+                    statements.extend(policy_map[arn])
 
-            # Permission boundary
+            # Permission boundary (Allow-only filter)
             boundary_stmts = []
             pb = role.get("PermissionsBoundary", {}) or {}
             pb_arn = pb.get("PermissionsBoundaryArn", "")
             if pb_arn and pb_arn in policy_map:
-                boundary_stmts = policy_map[pb_arn]
+                boundary_stmts = [s for s in policy_map[pb_arn] if s.effect == "Allow"]
             elif pb.get("PermissionsBoundaryDocument"):
                 boundary_stmts = _parse_boundary_doc(pb["PermissionsBoundaryDocument"])
 
