@@ -1196,16 +1196,64 @@
     function exportGraphPNG() {
         const net = window._iamNetwork;
         if (!net) { alert('Graph not ready yet.'); return; }
-        try {
-            const canvas = net.canvas.frame.canvas;
-            const dataURL = canvas.toDataURL('image/png');
-            const a = document.createElement('a');
-            a.href = dataURL;
-            a.download = 'iam_attack_graph.png';
-            a.click();
-        } catch (e) {
-            alert('Could not export graph: ' + e.message);
+
+        const container  = document.getElementById('network');
+        const isLight    = document.body.classList.contains('light-mode');
+        const EXPORT_W   = 3200;
+        const EXPORT_H   = 2000;
+
+        // Save current container dimensions and view state
+        const origW = container.style.width;
+        const origH = container.style.height;
+
+        // In light mode use dark fonts so labels show on white background
+        if (isLight) {
+            net.setOptions({ nodes: { font: { color: '#0f172a', strokeColor: '#ffffff' } } });
         }
+
+        // Expand container to export resolution so vis.js renders all nodes large
+        container.style.width  = EXPORT_W + 'px';
+        container.style.height = EXPORT_H + 'px';
+        net.setSize(EXPORT_W + 'px', EXPORT_H + 'px');
+        net.redraw();
+
+        // Fit ALL nodes into the large canvas (no animation so it's instant)
+        net.fit({ animation: false });
+        net.redraw();
+
+        // Give vis.js one frame to finish drawing
+        setTimeout(() => {
+            try {
+                const canvas = net.canvas.frame.canvas;
+
+                // Composite onto a clean background canvas
+                const out = document.createElement('canvas');
+                out.width  = canvas.width;
+                out.height = canvas.height;
+                const ctx = out.getContext('2d');
+                ctx.fillStyle = isLight ? '#f1f5f9' : '#0f172a';
+                ctx.fillRect(0, 0, out.width, out.height);
+                ctx.drawImage(canvas, 0, 0);
+
+                const a = document.createElement('a');
+                a.href     = out.toDataURL('image/png');
+                a.download = 'iam_attack_graph.png';
+                a.click();
+            } catch (e) {
+                alert('Could not export graph: ' + e.message);
+            } finally {
+                // Restore container size and font colors
+                container.style.width  = origW;
+                container.style.height = origH;
+                net.setSize(origW || '100%', origH || '560px');
+                net.redraw();
+                net.fit({ animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
+
+                if (isLight) {
+                    net.setOptions({ nodes: { font: { color: '#ffffff', strokeColor: '#0f172a' } } });
+                }
+            }
+        }, 150);
     }
     </script>
 
