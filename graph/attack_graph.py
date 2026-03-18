@@ -114,7 +114,7 @@ def _resource_match(deny_resource: str, actual_resource: str) -> bool:
     return _fnmatch.fnmatch(actual_resource.lower(), deny_resource.lower())
 
 
-def build_attack_graph(principals: dict, scps: list = None):
+def build_attack_graph(principals: dict, scps: list = None, resource_policies: list = None):
 
     g = AttackGraph()
 
@@ -300,6 +300,23 @@ def build_attack_graph(principals: dict, scps: list = None):
                     a = _anode(read_action)
                     g.add_edge(name, a)
                     g.add_edge(a, _cap(cap_name))
+
+    # ── Resource-based policy edges ───────────────────────────────────────────
+    # For Lambda resources: if principal P can invoke function F (via resource
+    # policy), and F has execution role R that is a known principal, add a
+    # virtual trust edge P → R so the escalation engine can traverse it.
+    for rp in (resource_policies or []):
+        exec_role_name = _role_name_from_arn(rp.execution_role or "") if rp.execution_role else None
+        if rp.resource_type == "lambda" and exec_role_name and exec_role_name in principals:
+            invoke_actions = {"lambda:invokefunction", "lambda:*", "*"}
+            if rp.allowed_actions & invoke_actions:
+                for p_arn in rp.allowed_principals:
+                    caller = _role_name_from_arn(p_arn) or p_arn.split("/")[-1]
+                    if caller in principals:
+                        # Add a virtual assume-role edge through a labelled action node
+                        a = _anode(f"lambda:InvokeFunction({exec_role_name})")
+                        g.add_edge(caller, a)
+                        g.add_edge(a, exec_role_name)
 
     # ── Attached managed policy detection ─────────────────────────────────────
     for name, p in principals.items():

@@ -390,7 +390,7 @@ Examples:
     if args.live:
         print("\nFetching IAM configuration from AWS...\n")
         data                = fetch_account_authorization(profile=args.profile)
-        principals, scps    = parse_aws_iam_json(data)
+        principals, scps, _ = parse_aws_iam_json(data)
 
         if args.input:
             analyze_principal(principals, args.input, scps=scps, output_pdf=args.pdf)
@@ -402,7 +402,7 @@ Examples:
     # File Mode
     # ---------------------------------------------------------
     if args.input:
-        principals, scps = parse_aws_iam_json(args.input)
+        principals, scps, _ = parse_aws_iam_json(args.input)
 
         if args.principal:
             analyze_principal(principals, args.principal, scps=scps, output_pdf=args.pdf)

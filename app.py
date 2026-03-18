@@ -39,7 +39,7 @@ def analyze():
         return render_template("index.html", error=f"Invalid JSON file: {e}")
 
     try:
-        principals, scps = parse_aws_iam_json(data)
+        principals, scps, _resource_policies = parse_aws_iam_json(data)
     except Exception as e:
         log.exception("Failed to parse IAM data from '%s'", filename)
         return render_template("index.html", error=f"Failed to parse IAM data: {e}")

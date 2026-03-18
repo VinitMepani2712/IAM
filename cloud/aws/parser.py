@@ -1,6 +1,6 @@
 import json
 import os
-from core.entities import Principal, PolicyStatement, TrustCondition, SCPStatement
+from core.entities import Principal, PolicyStatement, TrustCondition, SCPStatement, ResourcePolicy
 
 
 def _ensure_list(x):
@@ -171,6 +171,54 @@ def _parse_scps(scp_list: list) -> list:
     return scps
 
 
+def _parse_resource_policies(rp_list: list) -> list:
+    """
+    Parse a ResourcePolicies array into ResourcePolicy objects.
+
+    Expected entry format:
+        {
+            "ResourceArn":      "arn:aws:lambda:us-east-1:123456789012:function:MyFunc",
+            "ResourceType":     "lambda",          # lambda | s3 | sqs | secretsmanager
+            "ExecutionRoleArn": "arn:...:role/X",  # for Lambda/ECS only
+            "PolicyDocument":   { "Statement": [...] }
+        }
+    """
+    result = []
+    for entry in rp_list or []:
+        arn          = entry.get("ResourceArn", "")
+        rtype        = (entry.get("ResourceType") or "").lower()
+        exec_role    = entry.get("ExecutionRoleArn") or entry.get("ExecutionRole")
+        doc          = entry.get("PolicyDocument", {}) or {}
+        allowed_principals: set = set()
+        allowed_actions:    set = set()
+
+        for stmt in doc.get("Statement", []) or []:
+            if stmt.get("Effect") != "Allow":
+                continue
+            principal = stmt.get("Principal", {}) or {}
+            actions   = _ensure_list(stmt.get("Action", []))
+
+            # Collect principals (AWS, Federated, Service)
+            for p_key in ("AWS", "Federated", "Service"):
+                for item in _ensure_list(principal.get(p_key)):
+                    allowed_principals.add(item)
+            if principal == "*":
+                allowed_principals.add("*")
+
+            for action in actions:
+                allowed_actions.add(action.lower())
+
+        if allowed_principals:
+            result.append(ResourcePolicy(
+                resource_arn=arn,
+                resource_type=rtype,
+                execution_role=exec_role,
+                allowed_principals=allowed_principals,
+                allowed_actions=allowed_actions,
+            ))
+    return result
+
+
 def parse_aws_iam_json(source):
     """
     Parse IAM JSON and return (principals, scps).
@@ -257,8 +305,9 @@ def parse_aws_iam_json(source):
             principal_obj.permission_boundary = boundary_stmts
             principals[name] = principal_obj
 
-        scps = _parse_scps(data.get("ServiceControlPolicies", []))
-        return principals, scps
+        scps             = _parse_scps(data.get("ServiceControlPolicies", []))
+        resource_policies = _parse_resource_policies(data.get("ResourcePolicies", []))
+        return principals, scps, resource_policies
 
     # ── FORMAT B: Enterprise Simulation ──────────────────────────────────────
     if "Accounts" in data and isinstance(data["Accounts"], list):
@@ -294,7 +343,8 @@ def parse_aws_iam_json(source):
                 )
 
         # Top-level SCPs apply to all accounts in the simulation
-        scps = _parse_scps(data.get("ServiceControlPolicies", []))
-        return principals, scps
+        scps             = _parse_scps(data.get("ServiceControlPolicies", []))
+        resource_policies = _parse_resource_policies(data.get("ResourcePolicies", []))
+        return principals, scps, resource_policies
 
     raise ValueError("Unsupported IAM JSON format.")

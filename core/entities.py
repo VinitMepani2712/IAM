@@ -63,6 +63,24 @@ class SCPStatement:
 
 
 @dataclass
+class ResourcePolicy:
+    """
+    A resource-based policy attached to an AWS resource (Lambda, S3, SQS, etc.).
+
+    resource_arn      — ARN of the resource
+    resource_type     — "lambda", "s3", "sqs", "secretsmanager", etc.
+    execution_role    — for Lambda/ECS: the IAM role the resource executes with
+    allowed_principals — set of principal ARNs that have Allow access
+    allowed_actions    — set of actions granted by Allow statements
+    """
+    resource_arn:       str
+    resource_type:      str
+    execution_role:     Optional[str] = None
+    allowed_principals: Set[str]      = field(default_factory=set)
+    allowed_actions:    Set[str]      = field(default_factory=set)
+
+
+@dataclass
 class Principal:
     name: str
     account_id: str

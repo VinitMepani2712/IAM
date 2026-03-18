@@ -262,6 +262,7 @@
                     <button onclick="expandGraph()" class="btn-tab" id="btn-full">Full Topology</button>
                     <button onclick="network.fit({animation:{duration:500,easingFunction:'easeInOutQuad'}})" class="btn-tab">⊞ Fit</button>
                     <button onclick="resetGraph()" class="btn-tab">Reset</button>
+                    <button onclick="exportGraphPNG()" class="btn-tab" title="Save graph as PNG image">📷 Save PNG</button>
                 </div>
             </div>
 
@@ -338,14 +339,24 @@
                 </div>
             </div>
 
+            <!-- Bulk suppress action bar (hidden until rows are checked) -->
+            <div id="bulkBar" style="display:none;position:sticky;top:0;z-index:50;background:#1e1b4b;border:1px solid #4c1d95;border-radius:8px;padding:10px 16px;margin-bottom:10px;display:none;align-items:center;gap:12px;flex-wrap:wrap;">
+                <span id="bulkCount" style="font-size:0.85rem;color:#c4b5fd;font-weight:600;"></span>
+                <input id="bulkReason" type="text" placeholder="Suppression reason (optional)"
+                       style="flex:1;min-width:180px;padding:6px 10px;background:#0f172a;border:1px solid #4c1d95;border-radius:6px;color:#e2e8f0;font-size:0.82rem;outline:none;">
+                <button onclick="bulkSuppress()" style="padding:6px 16px;background:#5b21b6;color:#ede9fe;border:none;border-radius:6px;cursor:pointer;font-size:0.82rem;font-weight:600;">Suppress Selected</button>
+                <button onclick="clearBulkSelection()" style="padding:6px 12px;background:transparent;color:#94a3b8;border:1px solid #334155;border-radius:6px;cursor:pointer;font-size:0.82rem;">✕ Clear</button>
+            </div>
+
             {% if findings %}
             <table id="findingsTable">
                 <thead>
                     <tr>
-                        <th class="sortable" onclick="sortTable(0)">Principal <span class="sort-icon">⇅</span></th>
-                        <th class="sortable" onclick="sortTable(1)">Capability <span class="sort-icon">⇅</span></th>
-                        <th class="sortable" onclick="sortTable(2)">Risk <span class="sort-icon">⇅</span></th>
-                        <th class="sortable" onclick="sortTable(3)">Severity <span class="sort-icon">⇅</span></th>
+                        <th style="width:32px;text-align:center;"><input type="checkbox" id="selectAllFindings" title="Select all" onchange="toggleSelectAllFindings(this)" style="cursor:pointer;accent-color:#7c3aed;"></th>
+                        <th class="sortable" onclick="sortTable(1)">Principal <span class="sort-icon">⇅</span></th>
+                        <th class="sortable" onclick="sortTable(2)">Capability <span class="sort-icon">⇅</span></th>
+                        <th class="sortable" onclick="sortTable(3)">Risk <span class="sort-icon">⇅</span></th>
+                        <th class="sortable" onclick="sortTable(4)">Severity <span class="sort-icon">⇅</span></th>
                         <th>Pattern</th>
                         <th>MITRE</th>
                         <th>Conditions</th>
@@ -358,7 +369,10 @@
                     <tr class="finding-row" data-severity="{{ f.severity }}"
                         data-path='{{ f.path | tojson }}'
                         data-conditions='{{ f.get("condition_flags", {}) | tojson }}'
-                        data-breakdown='{{ f.get("risk_breakdown", {}) | tojson }}'>
+                        data-breakdown='{{ f.get("risk_breakdown", {}) | tojson }}'
+                        data-principal="{{ f.principal | e }}"
+                        data-capability="{{ f.capability | e }}">
+                        <td style="text-align:center;"><input type="checkbox" class="finding-select" onchange="onFindingSelect()" style="cursor:pointer;accent-color:#7c3aed;"></td>
                         <td><a href="/principal/{{ f.principal | urlencode }}?scan_id={{ scan_id }}" style="color:#7dd3fc;text-decoration:none;font-weight:600;">{{ f.principal }}</a></td>
                         <td>{{ f.capability }}</td>
                         <td>
@@ -603,6 +617,9 @@
         const network = new vis.Network(document.getElementById("network"), { nodes, edges }, networkOptions);
         applyBaseNodeStyles();
 
+        // Make network available globally so the PNG export button can access it
+        window._iamNetwork = network;
+
         network.once("stabilizationIterationsDone", () => {
             network.setOptions({ physics: { enabled: false } });
             network.fit({ animation: { duration: 800, easingFunction: "easeInOutQuad" } });
@@ -782,6 +799,68 @@
             .catch(() => showToast('Failed to suppress finding — server error', 'error'));
         }
 
+        // ── Bulk suppress helpers ─────────────────────────────────────────────
+        function onFindingSelect() {
+            const checked = document.querySelectorAll('.finding-select:checked');
+            const bar = document.getElementById('bulkBar');
+            if (checked.length > 0) {
+                bar.style.display = 'flex';
+                document.getElementById('bulkCount').textContent = `${checked.length} finding${checked.length !== 1 ? 's' : ''} selected`;
+            } else {
+                bar.style.display = 'none';
+            }
+            // Update "select all" checkbox state
+            const all = document.querySelectorAll('.finding-select');
+            const selAll = document.getElementById('selectAllFindings');
+            if (selAll) selAll.indeterminate = checked.length > 0 && checked.length < all.length;
+            if (selAll) selAll.checked = checked.length === all.length;
+        }
+
+        function toggleSelectAllFindings(cb) {
+            document.querySelectorAll('.finding-row:not([style*="display: none"]) .finding-select').forEach(el => {
+                el.checked = cb.checked;
+            });
+            onFindingSelect();
+        }
+
+        function clearBulkSelection() {
+            document.querySelectorAll('.finding-select').forEach(el => el.checked = false);
+            const selAll = document.getElementById('selectAllFindings');
+            if (selAll) { selAll.checked = false; selAll.indeterminate = false; }
+            document.getElementById('bulkBar').style.display = 'none';
+        }
+
+        function bulkSuppress() {
+            const checked = Array.from(document.querySelectorAll('.finding-select:checked'));
+            if (!checked.length) return;
+            const reason = document.getElementById('bulkReason').value.trim();
+            if (!confirm(`Suppress ${checked.length} finding${checked.length !== 1 ? 's' : ''}?\n\nThey will be hidden from future scans.`)) return;
+
+            const rows = checked.map(cb => cb.closest('tr'));
+            const payloads = rows.map(row => ({
+                principal:  row.dataset.principal,
+                capability: row.dataset.capability,
+                reason
+            }));
+
+            Promise.all(payloads.map(p =>
+                fetch('/suppress', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(p)
+                }).then(r => r.json())
+            )).then(() => {
+                rows.forEach(row => {
+                    row.style.transition = 'opacity 0.4s';
+                    row.style.opacity = '0.2';
+                    setTimeout(() => { row.style.display = 'none'; }, 450);
+                });
+                clearBulkSelection();
+                applyTableFilters();
+                showToast(`Suppressed ${payloads.length} finding${payloads.length !== 1 ? 's' : ''}`, 'info');
+            }).catch(() => showToast('Bulk suppress failed — server error', 'error'));
+        }
+
         // On load: hide already-suppressed rows
         fetch('/suppressions')
             .then(r => r.json())
@@ -789,7 +868,7 @@
                 if (!sups.length) return;
                 const supSet = new Set(sups.map(s => `${s.principal}|${s.capability}`));
                 document.querySelectorAll('.finding-row').forEach(row => {
-                    const key = `${row.cells[0].innerText.trim()}|${row.cells[1].innerText.trim()}`;
+                    const key = `${row.dataset.principal}|${row.dataset.capability}`;
                     if (supSet.has(key)) row.style.display = 'none';
                 });
                 applyTableFilters();
@@ -1104,6 +1183,24 @@
             if (btn) { btn.dataset.status = 'open'; btn.dataset.note = ''; }
             showToast('Note cleared', 'success');
         });
+    }
+    </script>
+
+    <!-- Graph PNG export -->
+    <script>
+    function exportGraphPNG() {
+        const net = window._iamNetwork;
+        if (!net) { alert('Graph not ready yet.'); return; }
+        try {
+            const canvas = net.canvas.frame.canvas;
+            const dataURL = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = dataURL;
+            a.download = 'iam_attack_graph.png';
+            a.click();
+        } catch (e) {
+            alert('Could not export graph: ' + e.message);
+        }
     }
     </script>
 

@@ -93,6 +93,22 @@
         {% endif %}
 
         {% if scans %}
+        <!-- Search & Filter bar -->
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+            <input id="historySearch" type="text" placeholder="Search by filename…"
+                   style="flex:1;min-width:180px;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:7px;color:#e2e8f0;font-size:0.85rem;outline:none;"
+                   oninput="filterHistory()">
+            <select id="severityFilter" onchange="filterHistory()"
+                    style="padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:7px;color:#e2e8f0;font-size:0.85rem;outline:none;">
+                <option value="">All severities</option>
+                <option value="critical">Has Critical</option>
+                <option value="high">Has High</option>
+                <option value="medium">Has Medium</option>
+                <option value="no_findings">No Findings</option>
+            </select>
+            <span id="filterCount" style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;"></span>
+        </div>
+
         <section class="card table-wrapper">
             {% if scans|length >= 2 %}
             <p style="padding:10px 16px 0;font-size:0.78rem;color:var(--text-muted);">
@@ -275,6 +291,42 @@
             updateCompareBtn();
         });
     });
+
+    // ── History search & filter ───────────────────────────────────────────────
+    function filterHistory() {
+        const query  = (document.getElementById('historySearch').value || '').toLowerCase().trim();
+        const sevFil = (document.getElementById('severityFilter').value || '').toLowerCase();
+        const rows   = document.querySelectorAll('#historyTable tbody tr.history-row');
+        let visible  = 0;
+
+        rows.forEach(row => {
+            const filename = (row.querySelector('td:nth-child(4)')?.textContent || '').toLowerCase();
+            const hasCrit  = row.querySelector('.severity-critical') !== null;
+            const hasHigh  = row.querySelector('.severity-high')     !== null;
+            const hasMed   = row.querySelector('.severity-medium')   !== null;
+            const noFind   = row.querySelector('td:nth-child(6)')?.textContent.trim() === '0';
+
+            const matchText = !query || filename.includes(query);
+            let matchSev = true;
+            if      (sevFil === 'critical')    matchSev = hasCrit;
+            else if (sevFil === 'high')        matchSev = hasHigh;
+            else if (sevFil === 'medium')      matchSev = hasMed;
+            else if (sevFil === 'no_findings') matchSev = noFind;
+
+            const show = matchText && matchSev;
+            row.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+
+        const total = rows.length;
+        const countEl = document.getElementById('filterCount');
+        if (countEl) {
+            countEl.textContent = (visible === total) ? `${total} scans` : `${visible} of ${total} scans`;
+        }
+    }
+
+    // Initialise count label on load
+    filterHistory();
     </script>
 </body>
 </html>
