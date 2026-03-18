@@ -33,6 +33,16 @@ def init_db() -> None:
     """Create tables if they don't exist. Call once at app startup."""
     with _connect() as conn:
         conn.executescript("""
+            CREATE TABLE IF NOT EXISTS finding_notes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                principal   TEXT NOT NULL,
+                capability  TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'open',
+                note        TEXT NOT NULL DEFAULT '',
+                updated_at  TEXT NOT NULL,
+                UNIQUE(principal, capability)
+            );
+
             CREATE TABLE IF NOT EXISTS scans (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at       TEXT    NOT NULL,
@@ -334,6 +344,42 @@ def delete_all_scans() -> int:
         """)
     log.info("Deleted all %d scans", count)
     return count
+
+
+def upsert_finding_note(principal: str, capability: str, status: str, note: str = "") -> None:
+    """Create or update the status/note for a (principal, capability) finding."""
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO finding_notes (principal, capability, status, note, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(principal, capability) DO UPDATE SET
+                status = excluded.status,
+                note   = excluded.note,
+                updated_at = excluded.updated_at
+            """,
+            (principal, capability, status, note, now),
+        )
+
+
+def get_finding_notes() -> Dict[str, Dict]:
+    """Return all notes keyed by 'principal::capability' for fast dashboard lookup."""
+    try:
+        with _connect() as conn:
+            rows = conn.execute("SELECT * FROM finding_notes").fetchall()
+        return {f"{r['principal']}::{r['capability']}": dict(r) for r in rows}
+    except Exception:
+        return {}
+
+
+def delete_finding_note(principal: str, capability: str) -> None:
+    """Remove a status/note (resets finding to open)."""
+    with _connect() as conn:
+        conn.execute(
+            "DELETE FROM finding_notes WHERE principal = ? AND capability = ?",
+            (principal, capability),
+        )
 
 
 def get_trend_data(limit: int = 20) -> List[Dict[str, Any]]:

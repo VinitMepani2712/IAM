@@ -2,7 +2,7 @@ import logging
 
 from analysis.criticality import compute_node_criticality
 from core.privilege_model import classify_action
-from analysis.risk_model import compute_risk, classify_severity
+from analysis.risk_model import compute_risk, compute_risk_breakdown, classify_severity
 from analysis.attack_patterns import classify_attack_pattern
 from analysis.centrality import compute_escalation_centrality
 from analysis.min_cut import compute_weighted_minimal_cut
@@ -154,7 +154,7 @@ def analyze_environment_data(principals, scps=None):
                             f"{node}: Region restricted"
                         )
 
-            risk = compute_risk(
+            risk_kwargs = dict(
                 capability_class=cap_class,
                 path_length=len(path),
                 centrality_score=centrality_score,
@@ -165,6 +165,8 @@ def analyze_environment_data(principals, scps=None):
                 org_id_required=condition_flags["org_id_required"],
                 region_restricted=condition_flags["region_restricted"],
             )
+            risk           = compute_risk(**risk_kwargs)
+            risk_breakdown = compute_risk_breakdown(**risk_kwargs)
 
             severity = classify_severity(risk)
 
@@ -176,6 +178,7 @@ def analyze_environment_data(principals, scps=None):
                 "account_id":           principal.account_id,
                 "capability":           cap_class,
                 "risk":                 risk,
+                "risk_breakdown":       risk_breakdown,
                 "severity":             severity,
                 "cross_account":        cross_account,
                 "path":                 path,
@@ -183,6 +186,7 @@ def analyze_environment_data(principals, scps=None):
                 "mitre":                primary_pattern["mitre"],
                 "all_patterns":         pattern_list,
                 "condition_flags":      condition_flags,
+                "has_boundary":         bool(getattr(principal, "permission_boundary", [])),
             }
 
             findings.append(finding)

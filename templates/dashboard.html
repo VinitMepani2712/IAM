@@ -34,6 +34,32 @@
     <div id="toast-container"></div>
 
     <!--  SUPPRESSION MODAL  -->
+    <!-- Finding Note Modal -->
+    <div class="modal-overlay" id="noteModal" onclick="closeNoteModal(event)">
+        <div class="modal-box" style="max-width:480px;">
+            <div class="modal-header">
+                <h3>Finding Status &amp; Note</h3>
+                <button class="modal-close" onclick="closeNoteModal()">✕ Close</button>
+            </div>
+            <div class="modal-body" style="padding:20px;">
+                <p id="noteModalTitle" style="color:#94a3b8;font-size:0.82rem;margin-bottom:14px;"></p>
+                <label style="display:block;font-size:0.8rem;color:#94a3b8;margin-bottom:6px;">Status</label>
+                <select id="noteStatus" style="width:100%;background:#0f172a;color:#f1f5f9;border:1px solid #334155;border-radius:8px;padding:8px 10px;font-size:0.85rem;margin-bottom:14px;">
+                    <option value="open">— Open</option>
+                    <option value="investigating">🔍 Investigating</option>
+                    <option value="in_remediation">🔧 In Remediation</option>
+                    <option value="accepted_risk">✅ Accepted Risk</option>
+                </select>
+                <label style="display:block;font-size:0.8rem;color:#94a3b8;margin-bottom:6px;">Note (optional)</label>
+                <textarea id="noteText" rows="3" style="width:100%;background:#0f172a;color:#f1f5f9;border:1px solid #334155;border-radius:8px;padding:8px 10px;font-size:0.85rem;resize:vertical;box-sizing:border-box;" placeholder="e.g. Ticket #1234, owner: alice@company.com"></textarea>
+                <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end;">
+                    <button onclick="clearNote()" style="padding:7px 16px;border-radius:8px;border:1px solid #334155;background:transparent;color:#94a3b8;cursor:pointer;">Clear</button>
+                    <button onclick="saveNote()" style="padding:7px 18px;border-radius:8px;background:#166534;color:#86efac;border:none;cursor:pointer;font-weight:600;">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- AI Remediation Modal -->
     <div class="modal-overlay" id="aiModal" onclick="closeAIModal(event)">
         <div class="modal-box" style="max-width:680px;">
@@ -323,6 +349,7 @@
                         <th>Pattern</th>
                         <th>MITRE</th>
                         <th>Conditions</th>
+                        <th>Status</th>
                         <th>Action</th>
                     </tr>
                 </thead>
@@ -330,11 +357,14 @@
                     {% for f in findings %}
                     <tr class="finding-row" data-severity="{{ f.severity }}"
                         data-path='{{ f.path | tojson }}'
-                        data-conditions='{{ f.get("condition_flags", {}) | tojson }}'>
-                        <td>{{ f.principal }}</td>
+                        data-conditions='{{ f.get("condition_flags", {}) | tojson }}'
+                        data-breakdown='{{ f.get("risk_breakdown", {}) | tojson }}'>
+                        <td><a href="/principal/{{ f.principal | urlencode }}?scan_id={{ scan_id }}" style="color:#7dd3fc;text-decoration:none;font-weight:600;">{{ f.principal }}</a></td>
                         <td>{{ f.capability }}</td>
                         <td>
-                            <div class="risk-bar">
+                            <div class="risk-bar risk-bar-hover" style="cursor:pointer;"
+                                 onmouseenter="showBreakdown(event, this.closest('tr'))"
+                                 onmouseleave="hideBreakdown()">
                                 <div class="risk-fill" style="width: {{ f.risk|int }}%"></div>
                             </div>
                             <span class="risk-score">{{ f.risk }}</span>
@@ -361,9 +391,23 @@
                             {% if cf.get('region_restricted') %}
                                 <span class="condition-badge condition-extid" title="Region restricted — risk reduced">📍 Region</span>
                             {% endif %}
-                            {% if not cf.get('requires_mfa') and not cf.get('requires_external_id') and not cf.get('source_ip_restricted') and not cf.get('org_id_required') and not cf.get('region_restricted') %}
+                            {% if f.get('has_boundary') %}
+                                <span class="condition-badge condition-extid" title="Permission boundary active — limits effective permissions">🛡 Boundary</span>
+                            {% endif %}
+                            {% if not cf.get('requires_mfa') and not cf.get('requires_external_id') and not cf.get('source_ip_restricted') and not cf.get('org_id_required') and not cf.get('region_restricted') and not f.get('has_boundary') %}
                                 <span class="condition-badge condition-none" title="No conditions — path is fully unprotected">⚠ None</span>
                             {% endif %}
+                        </td>
+                        <td>
+                            {% set note_key = f.principal ~ '::' ~ f.capability %}
+                            {% set note = finding_notes.get(note_key, {}) %}
+                            {% set st = note.get('status', 'open') %}
+                            <span class="status-badge status-{{ st }}" id="status-{{ loop.index0 }}">
+                                {% if st == 'in_remediation' %}🔧 In Remediation
+                                {% elif st == 'accepted_risk' %}✅ Accepted
+                                {% elif st == 'investigating' %}🔍 Investigating
+                                {% else %}— Open{% endif %}
+                            </span>
                         </td>
                         <td>
                             <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -377,6 +421,16 @@
                                 style="background:#1e3a5f;color:#7dd3fc;border:1px solid #1d4ed8;"
                                 title="Get AI-powered remediation suggestion">
                                 AI Fix
+                            </button>
+                            <button class="btn-suppress btn-note"
+                                data-idx="{{ loop.index0 }}"
+                                data-principal="{{ f.principal | e }}"
+                                data-capability="{{ f.capability | e }}"
+                                data-status="{{ note.get('status', 'open') }}"
+                                data-note="{{ note.get('note', '') | e }}"
+                                style="background:#1a2e1a;color:#86efac;border:1px solid #166534;"
+                                title="Set status / add note">
+                                Note
                             </button>
                             </div>
                         </td>
@@ -932,8 +986,135 @@
             document.getElementById('aiModal').classList.remove('open');
         }
     </script>
+    <!-- Risk breakdown tooltip -->
+    <div id="riskTooltip" style="
+        display:none;position:fixed;z-index:9999;
+        background:#1e293b;border:1px solid #334155;border-radius:10px;
+        padding:14px 16px;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,0.5);
+        font-size:0.8rem;color:#cbd5e1;pointer-events:none;">
+    </div>
+
+    <script>
+    function showBreakdown(e, row) {
+        const bd = JSON.parse(row.dataset.breakdown || '{}');
+        if (!bd || !bd.final) return;
+        const m = bd.mitigations || {};
+        const mitLines = [
+            m.mfa       ? `<tr><td style="color:#f87171">MFA required</td><td style="color:#f87171">${m.mfa}</td></tr>` : '',
+            m.external_id ? `<tr><td style="color:#f87171">ExternalId</td><td style="color:#f87171">${m.external_id}</td></tr>` : '',
+            m.source_ip ? `<tr><td style="color:#f87171">Source IP</td><td style="color:#f87171">${m.source_ip}</td></tr>` : '',
+            m.org_id    ? `<tr><td style="color:#f87171">Org ID</td><td style="color:#f87171">${m.org_id}</td></tr>` : '',
+            m.region    ? `<tr><td style="color:#f87171">Region</td><td style="color:#f87171">${m.region}</td></tr>` : '',
+        ].filter(Boolean).join('');
+        const tip = document.getElementById('riskTooltip');
+        tip.innerHTML = `
+            <div style="font-weight:700;color:#f1f5f9;margin-bottom:10px;border-bottom:1px solid #334155;padding-bottom:6px;">
+                Risk Score Breakdown
+            </div>
+            <table style="width:100%;border-collapse:collapse;">
+                <tr><td style="padding:2px 0;color:#94a3b8;">Capability base</td><td style="text-align:right;font-weight:600;">+${bd.base}</td></tr>
+                <tr><td style="padding:2px 0;color:#94a3b8;">Path directness</td><td style="text-align:right;font-weight:600;">+${bd.directness}</td></tr>
+                <tr><td style="padding:2px 0;color:#94a3b8;">Centrality</td><td style="text-align:right;font-weight:600;">+${bd.centrality}</td></tr>
+                ${bd.cross_account ? `<tr><td style="padding:2px 0;color:#94a3b8;">Cross-account</td><td style="text-align:right;font-weight:600;color:#f97316;">+${bd.cross_account}</td></tr>` : ''}
+                <tr style="border-top:1px solid #334155;">
+                    <td style="padding:4px 0;color:#cbd5e1;">Raw score</td>
+                    <td style="text-align:right;font-weight:700;">${Math.min(bd.raw, 100)}</td>
+                </tr>
+                ${mitLines}
+                <tr style="border-top:1px solid #334155;margin-top:4px;">
+                    <td style="padding:4px 0;font-weight:700;color:#f1f5f9;">Final score</td>
+                    <td style="text-align:right;font-weight:800;font-size:1rem;color:#facc15;">${bd.final}</td>
+                </tr>
+            </table>`;
+        tip.style.display = 'block';
+        positionTooltip(e, tip);
+    }
+    function positionTooltip(e, tip) {
+        const x = e.clientX + 14, y = e.clientY - 10;
+        const vw = window.innerWidth, vh = window.innerHeight;
+        tip.style.left = (x + 230 > vw ? x - 250 : x) + 'px';
+        tip.style.top  = (y + 200 > vh ? y - 160 : y) + 'px';
+    }
+    function hideBreakdown() {
+        document.getElementById('riskTooltip').style.display = 'none';
+    }
+    document.addEventListener('mousemove', e => {
+        const tip = document.getElementById('riskTooltip');
+        if (tip.style.display === 'block') positionTooltip(e, tip);
+    });
+    </script>
+
+    <!-- Note modal JS -->
+    <script>
+    let _noteCtx = {};
+    document.addEventListener('click', e => {
+        const btn = e.target.closest('.btn-note');
+        if (!btn) return;
+        _noteCtx = {
+            idx:        btn.dataset.idx,
+            principal:  btn.dataset.principal,
+            capability: btn.dataset.capability,
+        };
+        document.getElementById('noteModalTitle').textContent =
+            btn.dataset.principal + ' → ' + btn.dataset.capability;
+        document.getElementById('noteStatus').value = btn.dataset.status || 'open';
+        document.getElementById('noteText').value   = btn.dataset.note   || '';
+        document.getElementById('noteModal').classList.add('open');
+    });
+    function closeNoteModal(e) {
+        if (e && e.target !== document.getElementById('noteModal')) return;
+        document.getElementById('noteModal').classList.remove('open');
+    }
+    function saveNote() {
+        const status = document.getElementById('noteStatus').value;
+        const note   = document.getElementById('noteText').value.trim();
+        fetch('/api/notes', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ principal: _noteCtx.principal, capability: _noteCtx.capability, status, note })
+        })
+        .then(r => r.json())
+        .then(() => {
+            document.getElementById('noteModal').classList.remove('open');
+            // Update badge in row
+            const badge = document.getElementById('status-' + _noteCtx.idx);
+            if (badge) {
+                const labels = { open:'— Open', investigating:'🔍 Investigating', in_remediation:'🔧 In Remediation', accepted_risk:'✅ Accepted' };
+                badge.textContent = labels[status] || '— Open';
+                badge.className = 'status-badge status-' + status;
+            }
+            // Update btn data attrs so re-open shows current values
+            const btn = document.querySelector(`.btn-note[data-idx="${_noteCtx.idx}"]`);
+            if (btn) { btn.dataset.status = status; btn.dataset.note = note; }
+            showToast('Status saved', 'success');
+        })
+        .catch(() => showToast('Failed to save note', 'error'));
+    }
+    function clearNote() {
+        fetch('/api/notes', {
+            method: 'DELETE',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ principal: _noteCtx.principal, capability: _noteCtx.capability })
+        })
+        .then(() => {
+            document.getElementById('noteModal').classList.remove('open');
+            const badge = document.getElementById('status-' + _noteCtx.idx);
+            if (badge) { badge.textContent = '— Open'; badge.className = 'status-badge status-open'; }
+            const btn = document.querySelector(`.btn-note[data-idx="${_noteCtx.idx}"]`);
+            if (btn) { btn.dataset.status = 'open'; btn.dataset.note = ''; }
+            showToast('Note cleared', 'success');
+        });
+    }
+    </script>
+
     <style>
         @keyframes spin { to { transform: rotate(360deg); } }
+        .risk-bar-hover:hover { opacity: 0.85; }
+        .status-badge { font-size:0.72rem; padding:2px 8px; border-radius:4px; white-space:nowrap; }
+        .status-open          { color:#64748b; }
+        .status-investigating  { background:#1c1a09; color:#fde68a; border:1px solid #854d0e; }
+        .status-in_remediation { background:#0c1a2e; color:#93c5fd; border:1px solid #1d4ed8; }
+        .status-accepted_risk  { background:#14532d; color:#86efac; border:1px solid #166534; }
     </style>
 
 </body>

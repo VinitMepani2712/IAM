@@ -161,12 +161,38 @@ def build_attack_graph(principals: dict, scps: list = None):
                     for resource in _resources(stmt):
                         principal_denies[name].add((action.lower(), resource))
 
+    # ── Build per-principal boundary allowed-action sets ──────────────────────
+    # A principal with a boundary can only perform actions that are BOTH
+    # allowed by their identity policy AND allowed by the boundary.
+    # If no boundary is set, all identity-policy allows are effective.
+    principal_boundary_allows: dict = {}
+    for name, p in principals.items():
+        boundary = getattr(p, "permission_boundary", []) or []
+        if boundary:
+            allowed = set()
+            for stmt in boundary:
+                if getattr(stmt, "effect", "") == "Allow":
+                    for action in _actions(stmt):
+                        allowed.add(action.lower())
+            principal_boundary_allows[name] = allowed
+
+    def _boundary_permits(caller: str, action: str) -> bool:
+        """Return True if the caller's boundary (if any) permits this action."""
+        boundary_allows = principal_boundary_allows.get(caller)
+        if boundary_allows is None:
+            return True  # no boundary — identity policy is the only limit
+        return _has_action(boundary_allows, action)
+
     def _is_denied(caller: str, action: str, resource: str) -> bool:
         """
         Return True if an explicit Deny (principal-level or SCP) covers
-        this action+resource. Uses the same wildcard logic as _has_action
-        so patterns like iam:Pass*, arn:aws:iam::*:role/* are handled.
+        this action+resource, OR if a permission boundary blocks the action.
+        Uses the same wildcard logic as _has_action so patterns like
+        iam:Pass*, arn:aws:iam::*:role/* are handled correctly.
         """
+        # Permission boundary check (acts like an implicit deny if not allowed)
+        if not _boundary_permits(caller, action):
+            return True
         # Check SCP-level denies first (org-wide, highest priority)
         for (deny_action, deny_resource) in scp_denies:
             if _has_action({deny_action}, action) and _resource_match(deny_resource, resource):

@@ -78,5 +78,10 @@ class Principal:
     # Key: trust principal name/ARN → TrustCondition
     trust_conditions: Dict[str, "TrustCondition"] = field(default_factory=dict)
 
+    # Permission boundary — limits the maximum permissions a principal can have.
+    # If set, only actions ALLOWED by both the identity policy AND the boundary
+    # are effective. Stored as a list of PolicyStatements (Allow only).
+    permission_boundary: List["PolicyStatement"] = field(default_factory=list)
+
     def __hash__(self):
         return hash(self.name)

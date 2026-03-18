@@ -88,6 +88,61 @@ def compute_risk(
     return round(max(0.0, min(float(score), 100.0)), 1)
 
 
+def compute_risk_breakdown(
+    capability_class: str,
+    path_length: int,
+    centrality_score: float,
+    cross_account: bool = False,
+    requires_mfa: bool = False,
+    requires_external_id: bool = False,
+    source_ip_restricted: bool = False,
+    org_id_required: bool = False,
+    region_restricted: bool = False,
+) -> dict:
+    """
+    Return the same score as compute_risk() plus a breakdown dict showing
+    how each component contributed to the final value.
+    """
+    base_scores = {
+        "FULL_ADMIN": 70, "COMPUTE_LAUNCH": 60, "POLICY_MODIFICATION": 55,
+        "PRIVILEGE_PROPAGATION": 50, "CONSOLE_ACCESS": 38,
+        "ACCESS_KEY_PERSISTENCE": 32, "ROLE_ASSUMPTION": 20,
+        "IDENTITY_CREATION": 30, "DATA_READ": 15, "LOG_ACCESS": 12,
+        "AUDIT_READ": 18, "RECON": 10,
+    }
+    base             = base_scores.get(capability_class, 25)
+    extra_hops       = max(0, path_length - 2)
+    directness       = round(20 * (0.7 ** extra_hops))
+    centrality_factor= round(min(centrality_score * 8, 8))
+    cross_bonus      = 18 if cross_account else 0
+    raw              = base + directness + centrality_factor + cross_bonus
+    capped           = min(raw, 100)
+    mfa_reduction    = -15 if requires_mfa else 0
+    ext_id_reduction = -10 if requires_external_id else 0
+    ip_reduction     =  -8 if source_ip_restricted else 0
+    org_reduction    =  -5 if org_id_required else 0
+    region_reduction =  -5 if region_restricted else 0
+    total_mitigations = mfa_reduction + ext_id_reduction + ip_reduction + org_reduction + region_reduction
+    final = round(max(0.0, min(float(capped + total_mitigations), 100.0)), 1)
+
+    return {
+        "final":           final,
+        "base":            base,
+        "directness":      directness,
+        "centrality":      centrality_factor,
+        "cross_account":   cross_bonus,
+        "raw":             raw,
+        "mitigations": {
+            "mfa":       mfa_reduction,
+            "external_id": ext_id_reduction,
+            "source_ip": ip_reduction,
+            "org_id":    org_reduction,
+            "region":    region_reduction,
+            "total":     total_mitigations,
+        },
+    }
+
+
 def classify_severity(score: float) -> str:
     """
     Thresholds tuned to match expected enterprise distribution:

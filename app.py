@@ -104,6 +104,8 @@ def analyze():
     session["remediation"]      = remediation_serial
     session["total_principals"] = len(principals)
 
+    finding_notes = db.get_finding_notes()
+
     return render_template(
         "dashboard.html",
         findings=findings,
@@ -119,6 +121,7 @@ def analyze():
         scan_id=scan_id,
         filename=filename,
         scan_time=scan_time,
+        finding_notes=finding_notes,
     )
 
 
@@ -154,12 +157,51 @@ def dashboard():
         scan_id=scan_id,
         filename=scan.get("filename", ""),
         scan_time=scan.get("created_at", ""),
+        finding_notes=db.get_finding_notes(),
     )
 
 
 @app.route("/history-page")
 def history_page():
     return render_template("history.html", scans=db.list_scans())
+
+
+@app.route("/principal/<path:principal_name>")
+def principal_detail(principal_name: str):
+    scan_id = request.args.get("scan_id", type=int) or session.get("scan_id")
+    scan    = db.get_scan(scan_id) if scan_id else None
+    if not scan:
+        return redirect("/")
+
+    all_findings = scan["findings"]
+    criticality  = scan["criticality"]
+
+    # Filter findings for this principal
+    findings = [f for f in all_findings if f.get("principal") == principal_name]
+    if not findings:
+        return redirect("/dashboard")
+
+    # All principals this one can reach through paths
+    reachable = set()
+    for f in findings:
+        for node in f.get("path", []):
+            if not node.startswith("CAPABILITY::") and not node.startswith("ACTION::"):
+                reachable.add(node)
+    reachable.discard(principal_name)
+
+    notes = db.get_finding_notes()
+    crit_score = criticality.get(principal_name, 0)
+
+    return render_template(
+        "principal.html",
+        principal_name=principal_name,
+        findings=findings,
+        reachable=sorted(reachable),
+        crit_score=round(crit_score, 3),
+        scan_id=scan_id,
+        notes=notes,
+        account_id=findings[0].get("account_id", ""),
+    )
 
 
 @app.route("/export/json")
@@ -266,6 +308,37 @@ def compare_scans():
     if not result:
         return redirect("/history-page")
     return render_template("compare.html", **result)
+
+
+@app.route("/api/notes", methods=["GET"])
+def get_notes():
+    return jsonify(db.get_finding_notes())
+
+
+@app.route("/api/notes", methods=["POST"])
+def upsert_note():
+    data       = request.get_json(silent=True) or {}
+    principal  = data.get("principal", "").strip()
+    capability = data.get("capability", "").strip()
+    status     = data.get("status", "open").strip()
+    note       = data.get("note", "").strip()
+    if not principal or not capability:
+        return jsonify({"error": "principal and capability required"}), 400
+    if status not in ("open", "in_remediation", "accepted_risk", "investigating"):
+        return jsonify({"error": "invalid status"}), 400
+    db.upsert_finding_note(principal, capability, status, note)
+    return jsonify({"status": "saved"})
+
+
+@app.route("/api/notes", methods=["DELETE"])
+def delete_note():
+    data       = request.get_json(silent=True) or {}
+    principal  = data.get("principal", "").strip()
+    capability = data.get("capability", "").strip()
+    if not principal or not capability:
+        return jsonify({"error": "principal and capability required"}), 400
+    db.delete_finding_note(principal, capability)
+    return jsonify({"status": "deleted"})
 
 
 @app.route("/scan/<int:scan_id>", methods=["DELETE"])

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ principal_name }} — IAM Defender</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+    <script src="https://unpkg.com/feather-icons"></script>
+    <style>
+        .detail-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:24px; }
+        .detail-card { background:var(--card-bg); border:1px solid var(--border); border-radius:10px; padding:18px 20px; }
+        .detail-card .label { font-size:0.72rem; text-transform:uppercase; letter-spacing:.07em; color:var(--text-muted); margin-bottom:8px; }
+        .detail-card .value { font-size:1.5rem; font-weight:800; color:var(--text-main); }
+        .path-chain { display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:0.78rem; }
+        .path-node { background:#1e293b; border:1px solid #334155; border-radius:5px; padding:2px 8px; color:#cbd5e1; }
+        .path-node.cap { background:#14532d; border-color:#166534; color:#86efac; }
+        .path-node.action { background:#1c1a09; border-color:#854d0e; color:#fde68a; }
+        .path-arrow { color:#475569; }
+        .section-title { font-size:0.78rem; text-transform:uppercase; letter-spacing:.07em; color:var(--text-muted); margin:0 0 12px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+        .finding-card { background:#0f172a; border:1px solid var(--border); border-radius:8px; padding:14px 16px; margin-bottom:12px; }
+        .finding-card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+        .reachable-list { display:flex; flex-wrap:wrap; gap:8px; }
+        .reachable-pill { background:#1e293b; border:1px solid #334155; border-radius:6px; padding:4px 10px; font-size:0.78rem; color:#94a3b8; }
+    </style>
+</head>
+<body>
+
+<aside class="sidebar">
+    <div class="brand">
+        <i data-feather="shield"></i>
+        <span>IAM Defender</span>
+    </div>
+    <div class="nav-label">Navigation</div>
+    <a class="nav-item" href="/"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>Upload &amp; Analyze</a>
+    <a class="nav-item active" href="/dashboard"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3"/></svg>Dashboard</a>
+    <a class="nav-item" href="/history-page"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Scan History</a>
+</aside>
+
+<main class="main-content">
+
+    <header class="top-bar">
+        <div>
+            <h1 style="font-family:monospace;font-size:1.3rem;">{{ principal_name }}</h1>
+            <p style="color:var(--text-muted);margin-top:4px;font-size:0.82rem;">
+                Account: <strong style="color:#94a3b8;">{{ account_id }}</strong>
+                &nbsp;·&nbsp; Criticality score: <strong style="color:#facc15;">{{ crit_score }}</strong>
+            </p>
+        </div>
+        <a href="/dashboard" class="btn-export">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+            Back to Dashboard
+        </a>
+    </header>
+
+    <!-- Summary cards -->
+    <div class="detail-grid">
+        <div class="detail-card">
+            <div class="label">Total Escalation Paths</div>
+            <div class="value">{{ findings|length }}</div>
+        </div>
+        <div class="detail-card">
+            <div class="label">Highest Risk Score</div>
+            <div class="value" style="color:#ef4444;">{{ findings|map(attribute='risk')|max|round(1) }}</div>
+        </div>
+        <div class="detail-card">
+            <div class="label">Reachable Principals</div>
+            <div class="value" style="color:#f97316;">{{ reachable|length }}</div>
+        </div>
+        <div class="detail-card">
+            <div class="label">Critical Findings</div>
+            <div class="value" style="color:#ef4444;">{{ findings|selectattr('severity','equalto','CRITICAL')|list|length }}</div>
+        </div>
+        <div class="detail-card">
+            <div class="label">Cross-Account Paths</div>
+            <div class="value" style="color:#a78bfa;">{{ findings|selectattr('cross_account')|list|length }}</div>
+        </div>
+        <div class="detail-card">
+            <div class="label">Unique Capabilities</div>
+            <div class="value">{{ findings|map(attribute='capability')|unique|list|length }}</div>
+        </div>
+    </div>
+
+    <!-- Reachable principals -->
+    {% if reachable %}
+    <section class="card" style="margin-bottom:20px;">
+        <h2 class="section-title" style="padding:16px 20px 0;">Reachable Principals via Escalation</h2>
+        <div class="reachable-list" style="padding:0 20px 16px;">
+            {% for p in reachable %}
+            <a href="/principal/{{ p }}?scan_id={{ scan_id }}" class="reachable-pill" style="text-decoration:none;color:#94a3b8;">{{ p }}</a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- All escalation paths -->
+    <section class="card" style="margin-bottom:20px;">
+        <h2 class="section-title" style="padding:16px 20px 0;">Escalation Findings ({{ findings|length }})</h2>
+        <div style="padding:0 20px 16px;">
+        {% for f in findings | sort(attribute='risk', reverse=True) %}
+        {% set note_key = f.principal ~ '::' ~ f.capability %}
+        {% set note = notes.get(note_key, {}) %}
+        <div class="finding-card">
+            <div class="finding-card-header">
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <span class="severity-pill severity-{{ f.severity|lower }}">{{ f.severity }}</span>
+                    <code style="color:#7dd3fc;font-size:0.85rem;">{{ f.capability }}</code>
+                    <span style="color:#64748b;font-size:0.78rem;">risk {{ f.risk }}</span>
+                    {% if f.cross_account %}<span style="color:#ef4444;font-size:0.75rem;">✗ cross-account</span>{% endif %}
+                    {% if note.get('status','open') != 'open' %}
+                    <span class="status-badge status-{{ note.get('status') }}" style="font-size:0.7rem;padding:2px 7px;border-radius:4px;">
+                        {% if note.status == 'in_remediation' %}🔧 In Remediation
+                        {% elif note.status == 'accepted_risk' %}✅ Accepted
+                        {% elif note.status == 'investigating' %}🔍 Investigating{% endif %}
+                    </span>
+                    {% endif %}
+                </div>
+                <div style="font-size:0.75rem;color:#64748b;">{{ f.pattern }}</div>
+            </div>
+
+            <!-- Breakdown -->
+            {% set bd = f.get('risk_breakdown', {}) %}
+            {% if bd %}
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:0.75rem;color:#64748b;">
+                <span>Base <strong style="color:#94a3b8;">+{{ bd.base }}</strong></span>
+                <span>Directness <strong style="color:#94a3b8;">+{{ bd.directness }}</strong></span>
+                <span>Centrality <strong style="color:#94a3b8;">+{{ bd.centrality }}</strong></span>
+                {% if bd.cross_account %}<span>Cross-acct <strong style="color:#f97316;">+{{ bd.cross_account }}</strong></span>{% endif %}
+                {% if bd.mitigations and bd.mitigations.total < 0 %}<span>Mitigations <strong style="color:#22c55e;">{{ bd.mitigations.total }}</strong></span>{% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Path chain -->
+            <div class="path-chain">
+                {% for node in f.path %}
+                {% if not loop.first %}<span class="path-arrow">→</span>{% endif %}
+                {% if node.startswith('CAPABILITY::') %}
+                    <span class="path-node cap">{{ node.replace('CAPABILITY::','') }}</span>
+                {% elif node.startswith('ACTION::') %}
+                    <span class="path-node action">{{ node.replace('ACTION::','') }}</span>
+                {% else %}
+                    <span class="path-node">{{ node }}</span>
+                {% endif %}
+                {% endfor %}
+            </div>
+
+            {% if note.get('note') %}
+            <div style="margin-top:8px;font-size:0.75rem;color:#64748b;border-top:1px solid #1e293b;padding-top:8px;">
+                📝 {{ note.note }}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+        </div>
+    </section>
+
+</main>
+<script>
+feather.replace();
+</script>
+<style>
+    .status-badge { font-size:0.72rem; padding:2px 8px; border-radius:4px; white-space:nowrap; }
+    .status-investigating  { background:#1c1a09; color:#fde68a; border:1px solid #854d0e; }
+    .status-in_remediation { background:#0c1a2e; color:#93c5fd; border:1px solid #1d4ed8; }
+    .status-accepted_risk  { background:#14532d; color:#86efac; border:1px solid #166534; }
+</style>
+</body>
+</html>

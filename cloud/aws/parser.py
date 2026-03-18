@@ -119,6 +119,34 @@ def _extract_trusts_from_assume_doc(assume_doc: dict) -> set:
     return trusts
 
 
+def _parse_boundary_doc(doc: dict) -> list:
+    """Parse a permission boundary PolicyDocument into PolicyStatement objects."""
+    statements = []
+    for stmt in (doc or {}).get("Statement", []) or []:
+        ps = _stmt_to_policy_statement(stmt)
+        if ps.effect == "Allow":          # boundaries only grant via Allow stmts
+            statements.append(ps)
+    return statements
+
+
+def _build_policy_map(policies_list: list) -> dict:
+    """
+    Build ARN → List[PolicyStatement] from the top-level Policies array
+    in GetAccountAuthorizationDetails.  Used to resolve permission boundary ARNs.
+    """
+    policy_map = {}
+    for pol in policies_list or []:
+        arn = pol.get("Arn")
+        if not arn:
+            continue
+        for version in pol.get("PolicyVersionList", []) or []:
+            if version.get("IsDefaultVersion"):
+                doc = version.get("Document", {}) or {}
+                policy_map[arn] = _parse_boundary_doc(doc)
+                break
+    return policy_map
+
+
 def _parse_scps(scp_list: list) -> list:
     """
     Parse a list of SCP dicts into SCPStatement objects.
@@ -165,6 +193,9 @@ def parse_aws_iam_json(source):
     # ── FORMAT A: AWS GetAccountAuthorizationDetails ──────────────────────────
     if "UserDetailList" in data or "RoleDetailList" in data:
 
+        # Build ARN → statements map so we can resolve boundary policy docs
+        policy_map = _build_policy_map(data.get("Policies", []))
+
         # Users
         for user in data.get("UserDetailList", []) or []:
             name       = user["UserName"]
@@ -177,10 +208,21 @@ def parse_aws_iam_json(source):
                 for stmt in doc.get("Statement", []) or []:
                     statements.append(_stmt_to_policy_statement(stmt))
 
-            principals[name] = Principal(
+            # Permission boundary
+            boundary_stmts = []
+            pb = user.get("PermissionsBoundary", {}) or {}
+            pb_arn = pb.get("PermissionsBoundaryArn", "")
+            if pb_arn and pb_arn in policy_map:
+                boundary_stmts = policy_map[pb_arn]
+            elif pb.get("PermissionsBoundaryDocument"):
+                boundary_stmts = _parse_boundary_doc(pb["PermissionsBoundaryDocument"])
+
+            p = Principal(
                 name=name, account_id=account_id, type="user",
-                policy_statements=statements, trusts=set(), arn=arn
+                policy_statements=statements, trusts=set(), arn=arn,
             )
+            p.permission_boundary = boundary_stmts
+            principals[name] = p
 
         # Roles
         for role in data.get("RoleDetailList", []) or []:
@@ -197,12 +239,22 @@ def parse_aws_iam_json(source):
                 for stmt in doc.get("Statement", []) or []:
                     statements.append(_stmt_to_policy_statement(stmt))
 
+            # Permission boundary
+            boundary_stmts = []
+            pb = role.get("PermissionsBoundary", {}) or {}
+            pb_arn = pb.get("PermissionsBoundaryArn", "")
+            if pb_arn and pb_arn in policy_map:
+                boundary_stmts = policy_map[pb_arn]
+            elif pb.get("PermissionsBoundaryDocument"):
+                boundary_stmts = _parse_boundary_doc(pb["PermissionsBoundaryDocument"])
+
             principal_obj = Principal(
                 name=name, account_id=account_id, type="role",
                 policy_statements=statements, trusts=trusts, arn=arn,
                 trust_conditions=trust_conditions,
             )
             principal_obj.attached_managed_policies = role.get("AttachedManagedPolicies", [])
+            principal_obj.permission_boundary = boundary_stmts
             principals[name] = principal_obj
 
         scps = _parse_scps(data.get("ServiceControlPolicies", []))
