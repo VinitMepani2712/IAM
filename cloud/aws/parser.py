@@ -156,6 +156,33 @@ def _build_policy_map(policies_list: list) -> dict:
     return policy_map
 
 
+def _build_group_map(group_list: list, policy_map: dict) -> dict:
+    """
+    Build group_name → List[PolicyStatement] from GroupDetailList.
+
+    Resolves both inline group policies (GroupPolicyList) and attached
+    managed policies (AttachedManagedPolicies) via policy_map.
+    """
+    group_map = {}
+    for grp in group_list or []:
+        name       = grp.get("GroupName") or grp.get("Group", {}).get("GroupName")
+        if not name:
+            continue
+        stmts = []
+        # Inline policies
+        for pol in grp.get("GroupPolicyList", []) or []:
+            doc = pol.get("PolicyDocument", {}) or {}
+            for stmt in doc.get("Statement", []) or []:
+                stmts.append(_stmt_to_policy_statement(stmt))
+        # Attached managed policies
+        for ap in grp.get("AttachedManagedPolicies", []) or []:
+            arn = ap.get("PolicyArn", "")
+            if arn in policy_map:
+                stmts.extend(policy_map[arn])
+        group_map[name] = stmts
+    return group_map
+
+
 def _parse_scps(scp_list: list) -> list:
     """
     Parse a list of SCP dicts into SCPStatement objects.
@@ -250,8 +277,11 @@ def parse_aws_iam_json(source):
     # ── FORMAT A: AWS GetAccountAuthorizationDetails ──────────────────────────
     if "UserDetailList" in data or "RoleDetailList" in data:
 
-        # Build ARN → statements map so we can resolve boundary policy docs
+        # Build ARN → statements map for managed policy + boundary resolution
         policy_map = _build_policy_map(data.get("Policies", []))
+
+        # Build group_name → statements map for group membership resolution
+        group_map = _build_group_map(data.get("GroupDetailList", []), policy_map)
 
         # Users
         for user in data.get("UserDetailList", []) or []:
@@ -267,9 +297,12 @@ def parse_aws_iam_json(source):
                     statements.append(_stmt_to_policy_statement(stmt))
             # Attached managed policies — resolve full document from policy_map
             for ap in user.get("AttachedManagedPolicies", []) or []:
-                arn = ap.get("PolicyArn", "")
-                if arn in policy_map:
-                    statements.extend(policy_map[arn])
+                ap_arn = ap.get("PolicyArn", "")
+                if ap_arn in policy_map:
+                    statements.extend(policy_map[ap_arn])
+            # Group membership — inherit all policies from each group the user belongs to
+            for group_name in user.get("GroupList", []) or []:
+                statements.extend(group_map.get(group_name, []))
 
             # Permission boundary (Allow-only filter)
             boundary_stmts = []

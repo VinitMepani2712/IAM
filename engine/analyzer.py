@@ -195,6 +195,37 @@ def analyze_environment_data(principals, scps=None):
             compute_weighted_minimal_cut(valid_paths)
             compute_dominators(valid_paths)
 
+    # ── Suppress recon-only noise ─────────────────────────────────────────────
+    # Principals whose ONLY capabilities are low-value read/recon types are not
+    # genuine escalation risks — they just have read access.  In real AWS accounts
+    # with hundreds of roles every role with ReadOnlyAccess would otherwise flood
+    # the dashboard with MEDIUM/LOW RECON findings, burying the real threats.
+    #
+    # Rule: drop RECON/DATA_READ/LOG_ACCESS findings for a principal if that
+    # principal has NO finding with a higher-impact capability.  If they also
+    # have POLICY_MODIFICATION or FULL_ADMIN etc., keep the recon findings
+    # (attacker can recon + attack — context matters).
+    RECON_CAPS = {"RECON", "DATA_READ", "LOG_ACCESS"}
+    ATTACK_CAPS = {
+        "FULL_ADMIN", "COMPUTE_LAUNCH", "POLICY_MODIFICATION",
+        "PRIVILEGE_PROPAGATION", "CONSOLE_ACCESS", "ACCESS_KEY_PERSISTENCE",
+        "IDENTITY_CREATION", "ROLE_ASSUMPTION", "AUDIT_READ",
+    }
+    principal_attack_caps: dict = {}
+    for f in findings:
+        p = f["principal"]
+        if f["capability"] in ATTACK_CAPS:
+            principal_attack_caps[p] = True
+
+    before = len(findings)
+    findings = [
+        f for f in findings
+        if f["capability"] not in RECON_CAPS or principal_attack_caps.get(f["principal"], False)
+    ]
+    suppressed_recon = before - len(findings)
+    if suppressed_recon:
+        log.info("Suppressed %d recon-only findings (principals with no attack capability)", suppressed_recon)
+
     criticality = compute_node_criticality(findings)
 
     all_paths = [f["path"] for f in findings]
