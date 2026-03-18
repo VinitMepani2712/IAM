@@ -312,6 +312,30 @@ def compare_scans(id_a: int, id_b: int) -> Optional[Dict[str, Any]]:
     }
 
 
+def delete_scan(scan_id: int) -> None:
+    """Delete a scan and all its associated data by ID."""
+    with _connect() as conn:
+        conn.execute("DELETE FROM scan_findings    WHERE scan_id = ?", (scan_id,))
+        conn.execute("DELETE FROM scan_remediation WHERE scan_id = ?", (scan_id,))
+        conn.execute("DELETE FROM scan_graph       WHERE scan_id = ?", (scan_id,))
+        conn.execute("DELETE FROM scans            WHERE id      = ?", (scan_id,))
+    log.info("Deleted scan #%d", scan_id)
+
+
+def delete_all_scans() -> int:
+    """Delete every scan and return how many were removed."""
+    with _connect() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
+        conn.executescript("""
+            DELETE FROM scan_findings;
+            DELETE FROM scan_remediation;
+            DELETE FROM scan_graph;
+            DELETE FROM scans;
+        """)
+    log.info("Deleted all %d scans", count)
+    return count
+
+
 def get_trend_data(limit: int = 20) -> List[Dict[str, Any]]:
     """
     Return per-scan severity counts ordered oldest→newest for trend charts.

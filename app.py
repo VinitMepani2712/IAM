@@ -268,6 +268,18 @@ def compare_scans():
     return render_template("compare.html", **result)
 
 
+@app.route("/scan/<int:scan_id>", methods=["DELETE"])
+def delete_scan(scan_id: int):
+    db.delete_scan(scan_id)
+    return jsonify({"status": "deleted"})
+
+
+@app.route("/scans/all", methods=["DELETE"])
+def delete_all_scans():
+    count = db.delete_all_scans()
+    return jsonify({"status": "deleted", "count": count})
+
+
 @app.route("/api/trend")
 def trend_data():
     """Return per-scan severity counts for the trend chart (oldest→newest)."""

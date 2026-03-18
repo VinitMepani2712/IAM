@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(docker --version)",
-      "Bash(docker info --format \"Status: {{.ServerVersion}}\")"
+      "Bash(docker info --format \"Status: {{.ServerVersion}}\")",
+      "Bash(docker build -t iam-defender:latest .)",
+      "Bash(docker ps --filter \"publish=5000\" --format \"{{.ID}}\")",
+      "Bash(xargs -r docker stop)",
+      "Bash(docker run -d --name iam-defender --rm -p 5000:5000 -v \"v:/MSCS/Sem-3/ECE 507 Security Enginerring/Project/IAM/iam_defender.db:/app/iam_defender.db\" -e IAM_SECRET_KEY=iam-defender-dev-key -e IAM_LOG_LEVEL=INFO -e PORT=5000 iam-defender:latest)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5000/)"
     ]
   }
 }
