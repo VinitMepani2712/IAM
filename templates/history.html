@@ -40,6 +40,11 @@
             </svg>
             Scan History
         </a>
+
+        <button id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark mode">
+            <span id="themeIcon">☀️</span>
+            <span id="themeLabel">Light Mode</span>
+        </button>
     </aside>
 
     <main class="main-content">
@@ -141,7 +146,13 @@
                         <td style="color:var(--text-muted);font-size:0.8rem;">{{ s.id }}</td>
                         <td style="font-size:0.82rem;color:var(--text-muted);">{{ s.created_at }}</td>
                         <td>
-                            <span style="font-weight:600;color:var(--text-main);">{{ s.filename }}</span>
+                            <span class="scan-filename" data-id="{{ s.id }}"
+                                  style="font-weight:600;color:var(--text-main);">{{ s.filename }}</span>
+                            <button onclick="startRename({{ s.id }}, this)"
+                                    title="Rename"
+                                    style="margin-left:6px;background:none;border:none;cursor:pointer;color:#64748b;font-size:0.78rem;padding:2px 4px;border-radius:4px;"
+                                    onmouseenter="this.style.color='#94a3b8'"
+                                    onmouseleave="this.style.color='#64748b'">✏️</button>
                         </td>
                         <td style="text-align:center;">{{ s.total_principals }}</td>
                         <td style="text-align:center;font-weight:700;">{{ s.total_findings }}</td>
@@ -327,6 +338,79 @@
 
     // Initialise count label on load
     filterHistory();
+
+    // ── Scan rename ───────────────────────────────────────────────────────────
+    function startRename(id, btn) {
+        const span = document.querySelector(`.scan-filename[data-id="${id}"]`);
+        if (!span) return;
+        const current = span.textContent.trim();
+
+        const input = document.createElement('input');
+        input.type  = 'text';
+        input.value = current;
+        input.style.cssText = 'background:#0f172a;border:1px solid #7c3aed;border-radius:5px;color:#e2e8f0;padding:3px 8px;font-size:0.85rem;width:220px;outline:none;';
+
+        span.replaceWith(input);
+        btn.style.display = 'none';
+        input.focus();
+        input.select();
+
+        function commitRename() {
+            const newName = input.value.trim();
+            if (!newName || newName === current) {
+                restoreSpan(current);
+                return;
+            }
+            fetch(`/scan/${id}/rename`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newName })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { alert(data.error); restoreSpan(current); return; }
+                restoreSpan(newName);
+            })
+            .catch(() => restoreSpan(current));
+        }
+
+        function restoreSpan(text) {
+            const newSpan = document.createElement('span');
+            newSpan.className = 'scan-filename';
+            newSpan.dataset.id = id;
+            newSpan.style.cssText = 'font-weight:600;color:var(--text-main);';
+            newSpan.textContent = text;
+            input.replaceWith(newSpan);
+            btn.style.display = '';
+        }
+
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter')  commitRename();
+            if (e.key === 'Escape') restoreSpan(current);
+        });
+        input.addEventListener('blur', commitRename);
+    }
+    </script>
+    <script>
+    function toggleTheme() {
+        const isLight = document.body.classList.toggle('light-mode');
+        localStorage.setItem('iam-theme', isLight ? 'light' : 'dark');
+        _updateThemeBtn(isLight);
+    }
+    function _updateThemeBtn(isLight) {
+        const icon  = document.getElementById('themeIcon');
+        const label = document.getElementById('themeLabel');
+        if (!icon) return;
+        icon.textContent  = isLight ? '🌙' : '☀️';
+        label.textContent = isLight ? 'Dark Mode' : 'Light Mode';
+    }
+    (function initTheme() {
+        const saved = localStorage.getItem('iam-theme');
+        if (saved === 'light') {
+            document.body.classList.add('light-mode');
+            _updateThemeBtn(true);
+        }
+    })();
     </script>
 </body>
 </html>

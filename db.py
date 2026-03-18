@@ -332,6 +332,17 @@ def delete_scan(scan_id: int) -> None:
     log.info("Deleted scan #%d", scan_id)
 
 
+def rename_scan(scan_id: int, new_name: str) -> bool:
+    """Rename the filename label of a scan. Returns True if a row was updated."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE scans SET filename = ? WHERE id = ?",
+            (new_name.strip(), scan_id),
+        )
+    log.info("Renamed scan #%d → %s", scan_id, new_name.strip())
+    return cur.rowcount > 0
+
+
 def delete_all_scans() -> int:
     """Delete every scan and return how many were removed."""
     with _connect() as conn:

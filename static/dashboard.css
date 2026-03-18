@@ -2,6 +2,7 @@
     --bg-dark: #0f172a;
     --bg-card: #1e293b;
     --bg-sidebar: #0b1220;
+    --card-bg: #1e293b;
     --text-main: #e2e8f0;
     --text-muted: #94a3b8;
     --accent: #3b82f6;
@@ -12,6 +13,61 @@
     --medium: #eab308;
     --low: #22c55e;
 }
+
+/* ── Light mode overrides ─────────────────────────────────────── */
+body.light-mode {
+    --bg-dark:    #f1f5f9;
+    --bg-card:    #ffffff;
+    --bg-sidebar: #1e293b;
+    --card-bg:    #ffffff;
+    --text-main:  #0f172a;
+    --text-muted: #475569;
+    --accent:     #2563eb;
+    --accent-soft: rgba(37, 99, 235, 0.10);
+    --border:     #cbd5e1;
+    background: linear-gradient(145deg, #f1f5f9, #e2e8f0) !important;
+    color: var(--text-main);
+}
+
+body.light-mode .sidebar {
+    background: #1e293b;
+    border-right-color: #334155;
+}
+
+body.light-mode .nav-item        { color: #cbd5e1; }
+body.light-mode .nav-item.active { background: rgba(59,130,246,0.2); color: #93c5fd; }
+body.light-mode .nav-label       { color: #94a3b8; }
+body.light-mode .brand           { color: #93c5fd; }
+
+body.light-mode .card,
+body.light-mode .top-bar         { background: #ffffff; border-color: #cbd5e1; }
+
+body.light-mode table thead tr   { background: #f8fafc; }
+body.light-mode table tbody tr   { border-color: #e2e8f0; color: #0f172a; }
+body.light-mode table tbody tr:hover { background: #f1f5f9; }
+body.light-mode td, body.light-mode th { color: #0f172a; }
+
+body.light-mode .modal-box       { background: #ffffff; border-color: #cbd5e1; }
+body.light-mode .modal-header    { border-color: #e2e8f0; }
+body.light-mode code             { background: #f1f5f9; color: #1d4ed8; }
+
+/* Theme toggle button */
+#themeToggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: auto;
+    padding: 9px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.84rem;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.15s;
+}
+#themeToggle:hover { background: var(--accent-soft); color: var(--text-main); }
 
 * {
     box-sizing: border-box;
@@ -36,6 +92,9 @@ body {
     padding: 24px;
     position: fixed;
     height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
 }
 
 .brand {

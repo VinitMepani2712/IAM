@@ -128,6 +128,11 @@
             </svg>
             Suppressions
         </button>
+
+        <button id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark mode">
+            <span id="themeIcon">☀️</span>
+            <span id="themeLabel">Light Mode</span>
+        </button>
     </aside>
 
     <main class="main-content">
@@ -1202,6 +1207,29 @@
             alert('Could not export graph: ' + e.message);
         }
     }
+    </script>
+
+    <!-- Dark/Light mode -->
+    <script>
+    function toggleTheme() {
+        const isLight = document.body.classList.toggle('light-mode');
+        localStorage.setItem('iam-theme', isLight ? 'light' : 'dark');
+        _updateThemeBtn(isLight);
+    }
+    function _updateThemeBtn(isLight) {
+        const icon  = document.getElementById('themeIcon');
+        const label = document.getElementById('themeLabel');
+        if (!icon) return;
+        icon.textContent  = isLight ? '🌙' : '☀️';
+        label.textContent = isLight ? 'Dark Mode' : 'Light Mode';
+    }
+    (function initTheme() {
+        const saved = localStorage.getItem('iam-theme');
+        if (saved === 'light') {
+            document.body.classList.add('light-mode');
+            _updateThemeBtn(true);
+        }
+    })();
     </script>
 
     <style>

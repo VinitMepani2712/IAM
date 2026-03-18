@@ -34,6 +34,10 @@
     <a class="nav-item" href="/"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>Upload &amp; Analyze</a>
     <a class="nav-item active" href="/dashboard"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3"/></svg>Dashboard</a>
     <a class="nav-item" href="/history-page"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Scan History</a>
+    <button id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark mode">
+        <span id="themeIcon">☀️</span>
+        <span id="themeLabel">Light Mode</span>
+    </button>
 </aside>
 
 <main class="main-content">
@@ -156,6 +160,25 @@
 </main>
 <script>
 feather.replace();
+function toggleTheme() {
+    const isLight = document.body.classList.toggle('light-mode');
+    localStorage.setItem('iam-theme', isLight ? 'light' : 'dark');
+    _updateThemeBtn(isLight);
+}
+function _updateThemeBtn(isLight) {
+    const icon  = document.getElementById('themeIcon');
+    const label = document.getElementById('themeLabel');
+    if (!icon) return;
+    icon.textContent  = isLight ? '🌙' : '☀️';
+    label.textContent = isLight ? 'Dark Mode' : 'Light Mode';
+}
+(function initTheme() {
+    const saved = localStorage.getItem('iam-theme');
+    if (saved === 'light') {
+        document.body.classList.add('light-mode');
+        _updateThemeBtn(true);
+    }
+})();
 </script>
 <style>
     .status-badge { font-size:0.72rem; padding:2px 8px; border-radius:4px; white-space:nowrap; }

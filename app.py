@@ -353,6 +353,18 @@ def delete_all_scans():
     return jsonify({"status": "deleted", "count": count})
 
 
+@app.route("/scan/<int:scan_id>/rename", methods=["PATCH"])
+def rename_scan(scan_id: int):
+    data     = request.get_json(silent=True) or {}
+    new_name = data.get("name", "").strip()
+    if not new_name:
+        return jsonify({"error": "name is required"}), 400
+    updated = db.rename_scan(scan_id, new_name)
+    if not updated:
+        return jsonify({"error": "Scan not found"}), 404
+    return jsonify({"status": "renamed", "name": new_name})
+
+
 @app.route("/api/trend")
 def trend_data():
     """Return per-scan severity counts for the trend chart (oldest→newest)."""
