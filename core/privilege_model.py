@@ -22,24 +22,38 @@ CAPABILITY_MAP = {
     "iam:PassRole":                 "PRIVILEGE_PROPAGATION",
 
     # Policy manipulation
-    "iam:AttachRolePolicy":         "POLICY_MODIFICATION",
-    "iam:PutRolePolicy":            "POLICY_MODIFICATION",
-    "iam:AttachUserPolicy":         "POLICY_MODIFICATION",  # NEW
-    "iam:PutUserPolicy":            "POLICY_MODIFICATION",  # NEW
+    "iam:AttachRolePolicy":             "POLICY_MODIFICATION",
+    "iam:PutRolePolicy":                "POLICY_MODIFICATION",
+    "iam:AttachUserPolicy":             "POLICY_MODIFICATION",
+    "iam:PutUserPolicy":                "POLICY_MODIFICATION",
+    "iam:CreatePolicyVersion":          "POLICY_MODIFICATION",
+    "iam:SetDefaultPolicyVersion":      "POLICY_MODIFICATION",
 
     # Persistence
-    "iam:CreateAccessKey":          "ACCESS_KEY_PERSISTENCE",
+    "iam:CreateAccessKey":              "ACCESS_KEY_PERSISTENCE",
 
     # Console access takeover
-    "iam:CreateLoginProfile":       "CONSOLE_ACCESS",       # NEW
-    "iam:UpdateLoginProfile":       "CONSOLE_ACCESS",       # NEW
+    "iam:CreateLoginProfile":           "CONSOLE_ACCESS",
+    "iam:UpdateLoginProfile":           "CONSOLE_ACCESS",
 
     # Compute abuse
-    "ec2:RunInstances":             "COMPUTE_LAUNCH",
-    "lambda:CreateFunction":        "COMPUTE_LAUNCH",       # NEW
+    "ec2:RunInstances":                 "COMPUTE_LAUNCH",
+    "lambda:CreateFunction":            "COMPUTE_LAUNCH",
+    "lambda:UpdateFunctionCode":        "COMPUTE_LAUNCH",
+    "glue:CreateJob":                   "COMPUTE_LAUNCH",
+    "cloudformation:CreateStack":       "COMPUTE_LAUNCH",
+    "ecs:RunTask":                      "COMPUTE_LAUNCH",
+    "sagemaker:CreateTrainingJob":      "COMPUTE_LAUNCH",
 
     # Identity abuse
-    "iam:CreateUser":               "IDENTITY_CREATION",
+    "iam:CreateUser":                   "IDENTITY_CREATION",
+    "iam:CreateRole":                   "IDENTITY_CREATION",
+
+    # Privilege propagation
+    "iam:AddUserToGroup":               "PRIVILEGE_PROPAGATION",
+    "iam:UpdateAssumeRolePolicy":       "PRIVILEGE_PROPAGATION",
+    "iam:DeleteRolePermissionsBoundary":"PRIVILEGE_PROPAGATION",
+    "iam:DeleteUserPermissionsBoundary":"PRIVILEGE_PROPAGATION",
 
     # Low-impact — read/audit access (informational, reconnaissance value)
     "s3:GetObject":                 "DATA_READ",

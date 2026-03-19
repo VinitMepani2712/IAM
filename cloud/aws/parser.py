@@ -12,8 +12,21 @@ def _ensure_list(x):
 
 
 def _stmt_to_policy_statement(stmt: dict) -> PolicyStatement:
-    actions   = _ensure_list(stmt.get("Action", []))
+    actions = _ensure_list(stmt.get("Action", []))
+
+    # NotAction means "allow/deny EVERY action EXCEPT these listed ones".
+    # Treat conservatively as wildcard "*" — we may miss some exclusions but
+    # we will never miss a dangerous permission grant.  This is the correct
+    # approach for a security-oriented analyser (false-positive > false-negative).
+    if not actions and stmt.get("NotAction"):
+        actions = ["*"]
+
     resources = _ensure_list(stmt.get("Resource", "*")) or ["*"]
+
+    # NotResource: "allow on every resource EXCEPT these" → treat as wildcard.
+    if not resources and stmt.get("NotResource"):
+        resources = ["*"]
+
     return PolicyStatement(
         effect=stmt.get("Effect", "Deny"),
         actions=set(actions),
@@ -112,11 +125,6 @@ def _extract_trusts_and_conditions(assume_doc: dict):
 
     return trusts, conditions
 
-
-# Keep legacy function for backward compatibility
-def _extract_trusts_from_assume_doc(assume_doc: dict) -> set:
-    trusts, _ = _extract_trusts_and_conditions(assume_doc)
-    return trusts
 
 
 def _parse_boundary_doc(doc: dict) -> list:
