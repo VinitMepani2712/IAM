@@ -46,8 +46,15 @@
         </a>
 
         <div class="sidebar-footer">
-            <p><span class="dot-live"></span>Engine ready</p>
-            <p style="margin-top: 6px;">AWS GetAccountAuthorizationDetails</p>
+            <button id="themeToggle-index" onclick="toggleIndexTheme()" style="
+                display:flex; align-items:center; gap:8px; width:100%;
+                padding:8px 10px; border-radius:7px; border:1px solid var(--border);
+                background:transparent; color:var(--text-2); font-family:var(--sans);
+                font-size:0.8rem; font-weight:500; cursor:pointer; margin-bottom:12px;
+                transition:all 0.15s;">
+                <span id="themeIcon-index">🌙</span>
+                <span id="themeLabel-index">Dark Mode</span>
+            </button>
         </div>
     </aside>
 
@@ -176,6 +183,28 @@
             const overlay = document.getElementById('loadingOverlay');
             overlay.style.display = 'flex';
         });
+    </script>
+
+    <script>
+        function toggleIndexTheme() {
+            const isDark = document.body.classList.toggle('dark-mode');
+            localStorage.setItem('iam-theme', isDark ? 'dark' : 'light');
+            _updateIndexThemeBtn(isDark);
+        }
+        function _updateIndexThemeBtn(isDark) {
+            const icon  = document.getElementById('themeIcon-index');
+            const label = document.getElementById('themeLabel-index');
+            if (!icon) return;
+            icon.textContent  = isDark ? '☀️' : '🌙';
+            label.textContent = isDark ? 'Light Mode' : 'Dark Mode';
+        }
+        (function initIndexTheme() {
+            const saved = localStorage.getItem('iam-theme');
+            if (saved === 'dark') {
+                document.body.classList.add('dark-mode');
+                _updateIndexThemeBtn(true);
+            }
+        })();
     </script>
 
 </body>

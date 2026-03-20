@@ -159,7 +159,7 @@
                     </svg>
                     Export CSV
                 </button>
-                <a href="/export/json" class="btn-export" title="Download findings as JSON">
+                <a href="/export/json{% if scan_id %}?scan_id={{ scan_id }}{% endif %}" class="btn-export" title="Download findings as JSON">
                     <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                         <polyline points="7 10 12 15 17 10" />
@@ -167,7 +167,7 @@
                     </svg>
                     Export JSON
                 </a>
-                <a href="/export/pdf" class="btn-export btn-export-pdf" title="Download PDF risk report">
+                <a href="/export/pdf{% if scan_id %}?scan_id={{ scan_id }}{% endif %}" class="btn-export btn-export-pdf" title="Download PDF risk report">
                     <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                         <polyline points="14 2 14 8 20 8" />
@@ -189,6 +189,19 @@
             <div class="stat-card">
                 <h3>Total Findings</h3>
                 <p class="stat-value">{{ findings|length }}</p>
+                {% set nc = findings | selectattr('severity', 'equalto', 'CRITICAL') | list | length %}
+                {% set nh = findings | selectattr('severity', 'equalto', 'HIGH')     | list | length %}
+                {% set nm = findings | selectattr('severity', 'equalto', 'MEDIUM')   | list | length %}
+                {% set nl = findings | selectattr('severity', 'equalto', 'LOW')      | list | length %}
+                {% if findings|length > 0 %}
+                <div class="sev-dist-bar js-sev-bar" title="Critical / High / Medium / Low"
+                     data-c="{{ nc }}" data-h="{{ nh }}" data-m="{{ nm }}" data-l="{{ nl }}" data-n="{{ findings|length }}">
+                    {% if nc %}<span class="sdb-critical"></span>{% endif %}
+                    {% if nh %}<span class="sdb-high"></span>{% endif %}
+                    {% if nm %}<span class="sdb-medium"></span>{% endif %}
+                    {% if nl %}<span class="sdb-low"></span>{% endif %}
+                </div>
+                {% endif %}
             </div>
             <div class="stat-card critical">
                 <h3>Critical Risks</h3>
@@ -201,6 +214,11 @@
                 <p class="stat-value">
                     {{ findings | selectattr('cross_account') | list | length }}
                 </p>
+            </div>
+            <div class="stat-card" id="scoreCard">
+                <h3>Security Score</h3>
+                <p class="stat-value" id="securityGrade" style="font-size:2rem;letter-spacing:-0.02em;">—</p>
+                <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;" id="securityScoreLabel"></div>
             </div>
         </section>
 
@@ -236,7 +254,7 @@
         </section>
 
         <!--  TOP CRITICAL NODES  -->
-        {% if top_critical %}
+        <!-- {% if top_critical %}
         <section class="card">
             <div class="card-header">
                 <h2>🔥 Top Critical Nodes</h2>
@@ -256,7 +274,7 @@
                 {% endfor %}
             </div>
         </section>
-        {% endif %}
+        {% endif %} -->
 
         <!--  GRAPH  -->
         <section class="card graph-card">
@@ -268,8 +286,28 @@
                     <button onclick="network.fit({animation:{duration:500,easingFunction:'easeInOutQuad'}})" class="btn-tab">⊞ Fit</button>
                     <button onclick="resetGraph()" class="btn-tab">Reset</button>
                     <button onclick="exportGraphPNG()" class="btn-tab" title="Save graph as PNG image">📷 Save PNG</button>
+                    <button onclick="runAttackSimulation()" class="btn-tab" id="btn-simulate" title="Animate escalation paths — cycles through top 20 by risk score" style="background:rgba(239,68,68,0.12);color:#ef4444;border-color:rgba(239,68,68,0.35);">⚡ Simulate Attack</button>
                 </div>
             </div>
+
+            <!-- Simulation status banner (hidden by default) -->
+            <div id="simBanner" style="
+                display:none; align-items:center; gap:12px;
+                padding:10px 16px; border-radius:8px; margin-bottom:10px;
+                background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.35);
+                font-size:0.82rem; font-family:var(--mono);">
+                <span id="simDot" style="
+                    width:8px;height:8px;border-radius:50%;background:#ef4444;
+                    flex-shrink:0;animation:simPulse 0.8s ease-in-out infinite;"></span>
+                <span id="simStatus" style="color:#ef4444;font-weight:600;"></span>
+                <span id="simPath"   style="color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                <span id="simStep"   style="color:var(--text-muted);white-space:nowrap;"></span>
+            </div>
+            <style>
+                @keyframes simPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+                @keyframes nodePop  { 0%{transform:scale(1)} 50%{transform:scale(1.35)} 100%{transform:scale(1)} }
+                #btn-simulate:hover { background:rgba(239,68,68,0.22)!important; }
+            </style>
 
             <!-- Severity filter chips -->
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
@@ -353,76 +391,99 @@
                 <button onclick="clearBulkSelection()" style="padding:6px 12px;background:transparent;color:#94a3b8;border:1px solid #334155;border-radius:6px;cursor:pointer;font-size:0.82rem;">✕ Clear</button>
             </div>
 
+            <!-- Color legend -->
+            <div style="display:flex;align-items:center;gap:16px;padding:8px 16px 4px;flex-wrap:wrap;border-bottom:1px solid rgba(51,65,85,0.4);">
+                <span style="font-size:0.68rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;">Legend</span>
+                <span style="font-size:0.72rem;color:#94a3b8;display:flex;align-items:center;gap:5px;">
+                    <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:rgba(239,68,68,0.2);border:2px solid rgba(239,68,68,0.6);"></span> Critical ≥80
+                </span>
+                <span style="font-size:0.72rem;color:#94a3b8;display:flex;align-items:center;gap:5px;">
+                    <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:rgba(249,115,22,0.2);border:2px solid rgba(249,115,22,0.6);"></span> High ≥55
+                </span>
+                <span style="font-size:0.72rem;color:#94a3b8;display:flex;align-items:center;gap:5px;">
+                    <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:rgba(234,179,8,0.2);border:2px solid rgba(234,179,8,0.6);"></span> Medium ≥30
+                </span>
+                <span style="font-size:0.72rem;color:#94a3b8;display:flex;align-items:center;gap:5px;">
+                    <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:rgba(34,197,94,0.2);border:2px solid rgba(34,197,94,0.5);"></span> Low &lt;30
+                </span>
+
+                <span style="font-size:0.72rem;color:#94a3b8;display:flex;align-items:center;gap:5px;">
+                    <span style="display:inline-block;padding:1px 6px;border-radius:4px;background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.38);color:#a78bfa;font-size:0.65rem;font-weight:700;">▶ N paths</span> Multiple attack paths
+                </span>
+            </div>
+
             {% if findings %}
             <table id="findingsTable">
                 <thead>
                     <tr>
                         <th style="width:32px;text-align:center;"><input type="checkbox" id="selectAllFindings" title="Select all" onchange="toggleSelectAllFindings(this)" style="cursor:pointer;accent-color:#7c3aed;"></th>
-                        <th class="sortable" onclick="sortTable(1)">Principal <span class="sort-icon">⇅</span></th>
-                        <th class="sortable" onclick="sortTable(2)">Capability <span class="sort-icon">⇅</span></th>
-                        <th class="sortable" onclick="sortTable(3)">Risk <span class="sort-icon">⇅</span></th>
-                        <th class="sortable" onclick="sortTable(4)">Severity <span class="sort-icon">⇅</span></th>
+                        <th class="sortable" onclick="sortTable(1)">Finding <span class="sort-icon">⇅</span></th>
+                        <th class="sortable" onclick="sortTable(2)" style="width:96px;">Risk <span class="sort-icon">⇅</span></th>
+                        <th class="sortable" onclick="sortTable(3)" style="width:108px;">Severity <span class="sort-icon">⇅</span></th>
                         <th>Pattern</th>
-                        <th>MITRE</th>
-                        <th>Conditions</th>
-                        <th>Status</th>
-                        <th>Action</th>
+                        <th style="width:120px;">Conditions</th>
+                        <th style="width:130px;">Status</th>
+                        <th style="width:160px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for f in findings %}
+                    {% set note_key = f.principal ~ '::' ~ f.capability %}
+                    {% set note = finding_notes.get(note_key, {}) %}
+                    {% set st = note.get('status', 'open') %}
+                    {% set cf = f.get('condition_flags', {}) %}
                     <tr class="finding-row" data-severity="{{ f.severity }}"
                         data-path='{{ f.path | tojson }}'
-                        data-conditions='{{ f.get("condition_flags", {}) | tojson }}'
+                        data-conditions='{{ cf | tojson }}'
                         data-breakdown='{{ f.get("risk_breakdown", {}) | tojson }}'
                         data-principal="{{ f.principal | e }}"
-                        data-capability="{{ f.capability | e }}">
-                        <td style="text-align:center;"><input type="checkbox" class="finding-select" onchange="onFindingSelect()" style="cursor:pointer;accent-color:#7c3aed;"></td>
-                        <td><a href="/principal/{{ f.principal | urlencode }}?scan_id={{ scan_id }}" style="color:#7dd3fc;text-decoration:none;font-weight:600;">{{ f.principal }}</a></td>
-                        <td>{{ f.capability }}</td>
-                        <td>
-                            <div class="risk-bar risk-bar-hover" style="cursor:pointer;"
+                        data-capability="{{ f.capability | e }}"
+                        data-mitre="{{ f.mitre | e }}"
+                        data-pattern="{{ f.pattern | e }}"
+                        data-account="{{ f.get('account_id', '') | e }}">
+                        <!-- col 0: checkbox -->
+                        <td style="text-align:center;width:32px;">
+                            <input type="checkbox" class="finding-select" onchange="onFindingSelect()" style="cursor:pointer;accent-color:#7c3aed;">
+                        </td>
+                        <!-- col 1: Finding (principal + capability stacked) -->
+                        <td class="finding-cell">
+                            <a href="/principal/{{ f.principal | urlencode }}?scan_id={{ scan_id }}" class="principal-link">
+                                {{ f.principal }}{% if f.get('cross_account') %}<span class="badge-xacct">⚡ Cross-Acct</span>{% endif %}
+                            </a>
+                            <span class="capability-label">{{ f.capability }}</span>
+                            {% if f.mitre %}<span class="mitre-tag">{{ f.mitre }}</span>{% endif %}
+                        </td>
+                        <!-- col 2: Risk -->
+                        <td class="risk-cell">
+                            <div class="risk-score-badge risk-sev-{{ f.severity|lower }}">{{ f.risk|int }}</div>
+                            <div class="risk-bar risk-bar-hover" style="cursor:pointer;margin-top:5px;"
                                  onmouseenter="showBreakdown(event, this.closest('tr'))"
                                  onmouseleave="hideBreakdown()">
                                 <div class="risk-fill" style="width: {{ f.risk|int }}%"></div>
                             </div>
-                            <span class="risk-score">{{ f.risk }}</span>
                         </td>
-                        <td>
-                            <span class="severity-pill severity-{{ f.severity|lower }}">{{ f.severity }}</span>
+                        <!-- col 3: Severity -->
+                        <td><span class="severity-pill severity-{{ f.severity|lower }}">{{ f.severity }}</span></td>
+                        <!-- col 4: Pattern -->
+                        <td class="pattern-cell">
+                            <span class="pattern-badge" data-pattern="{{ f.pattern }}">{{ f.pattern.replace('_',' ') }}</span>
                         </td>
-                        <td>{{ f.pattern }}</td>
-                        <td>{{ f.mitre }}</td>
-                        <td>
-                            {% set cf = f.get('condition_flags', {}) %}
-                            {% if cf.get('requires_mfa') %}
-                                <span class="condition-badge condition-mfa" title="MFA required — risk reduced">🔐 MFA</span>
-                            {% endif %}
-                            {% if cf.get('requires_external_id') %}
-                                <span class="condition-badge condition-extid" title="ExternalId required — risk reduced">🔑 ExtID</span>
-                            {% endif %}
-                            {% if cf.get('source_ip_restricted') %}
-                                <span class="condition-badge condition-extid" title="Source IP restricted — risk reduced">🌐 IP</span>
-                            {% endif %}
-                            {% if cf.get('org_id_required') %}
-                                <span class="condition-badge condition-extid" title="Org ID required — risk reduced">🏢 Org</span>
-                            {% endif %}
-                            {% if cf.get('region_restricted') %}
-                                <span class="condition-badge condition-extid" title="Region restricted — risk reduced">📍 Region</span>
-                            {% endif %}
-                            {% if f.get('has_boundary') %}
-                                <span class="condition-badge condition-extid" title="Permission boundary active — limits effective permissions">🛡 Boundary</span>
-                            {% endif %}
+                        <!-- col 5: Conditions -->
+                        <td class="conditions-cell">
+                            {% if cf.get('requires_mfa') %}<span class="condition-badge condition-mfa" title="MFA required">🔐 MFA</span>{% endif %}
+                            {% if cf.get('requires_external_id') %}<span class="condition-badge condition-extid" title="ExternalId required">🔑 ExtID</span>{% endif %}
+                            {% if cf.get('source_ip_restricted') %}<span class="condition-badge condition-extid" title="Source IP restricted">🌐 IP</span>{% endif %}
+                            {% if cf.get('org_id_required') %}<span class="condition-badge condition-extid" title="Org ID required">🏢 Org</span>{% endif %}
+                            {% if cf.get('region_restricted') %}<span class="condition-badge condition-extid" title="Region restricted">📍 Region</span>{% endif %}
+                            {% if f.get('has_boundary') %}<span class="condition-badge condition-extid" title="Permission boundary active">🛡 Boundary</span>{% endif %}
                             {% if not cf.get('requires_mfa') and not cf.get('requires_external_id') and not cf.get('source_ip_restricted') and not cf.get('org_id_required') and not cf.get('region_restricted') and not f.get('has_boundary') %}
-                                <span class="condition-badge condition-none" title="No conditions — path is fully unprotected">⚠ None</span>
+                                <span class="condition-badge condition-none" title="No conditions — fully unprotected">⚠ None</span>
                             {% endif %}
                         </td>
+                        <!-- col 6: Status -->
                         <td>
-                            {% set note_key = f.principal ~ '::' ~ f.capability %}
-                            {% set note = finding_notes.get(note_key, {}) %}
-                            {% set st = note.get('status', 'open') %}
                             <span class="status-badge status-{{ st }}" id="status-{{ loop.index0 }}">
-                                {% if st == 'in_remediation' %}🔧 In Remediation
+                                {% if st == 'in_remediation' %}🔧 Remediating
                                 {% elif st == 'accepted_risk' %}✅ Accepted
                                 {% elif st == 'investigating' %}🔍 Investigating
                                 {% else %}— Open{% endif %}
@@ -489,6 +550,23 @@
             <div class="panel-section">
                 <h4>Recommended Mitigation</h4>
                 <p id="attackMitigation" style="white-space: pre-line;"></p>
+            </div>
+            <div class="panel-section" id="panelCompliance" style="display:none;">
+                <h4>Compliance Controls Violated</h4>
+                <div id="attackCompliance"></div>
+            </div>
+            <div class="panel-section" id="panelSimulate" style="display:none;">
+                <h4>Verify with AWS CLI</h4>
+                <pre id="attackSimulateCmd" style="
+                    background:#0b1220;border:1px solid #1e293b;border-radius:8px;
+                    padding:12px 14px;font-size:0.75rem;color:#86efac;
+                    overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin:0;"></pre>
+                <button onclick="copySimulateCmd()" style="
+                    margin-top:8px;padding:5px 14px;border-radius:6px;
+                    background:#0f4c2a;color:#86efac;border:1px solid #166534;
+                    cursor:pointer;font-size:0.78rem;font-weight:600;">
+                    📋 Copy Command
+                </button>
             </div>
         </div>
     </div>
@@ -677,6 +755,151 @@
             network.fit({ animation: true });
         }
 
+        /* ── ATTACK SIMULATION ─────────────────────────────────────────────── */
+        let _simRunning = false;
+
+        // Top-N findings sorted by risk, deduplicated by path signature
+        const _simQueue = (() => {
+            const seen = new Set();
+            return [...allFindings]
+                .filter(f => f.path && f.path.length >= 2)
+                .sort((a, b) => (b.risk || 0) - (a.risk || 0))
+                .filter(f => {
+                    const sig = f.path.join("|");
+                    if (seen.has(sig)) return false;
+                    seen.add(sig); return true;
+                })
+                .slice(0, 20);   // cap at top 20 unique paths
+        })();
+        let _simIndex = 0;        // cycles 0 → N-1 → 0 → …
+
+        function runAttackSimulation() {
+            if (_simRunning) return;
+
+            const target = _simQueue[_simIndex];
+            _simIndex    = (_simIndex + 1) % Math.max(1, _simQueue.length);
+
+            if (!target) { alert("No escalation paths to simulate."); return; }
+
+            _simRunning = true;
+            const btn    = document.getElementById("btn-simulate");
+            const banner = document.getElementById("simBanner");
+            const status = document.getElementById("simStatus");
+            const pathEl = document.getElementById("simPath");
+            const stepEl = document.getElementById("simStep");
+            if (btn) btn.disabled = true;
+
+            // Show banner — display which scenario out of how many
+            const queuePos = ((_simIndex - 1 + _simQueue.length) % _simQueue.length) + 1;
+            banner.style.display = "flex";
+            status.textContent   = `SIMULATING ATTACK  [${queuePos}/${_simQueue.length}]`;
+            pathEl.textContent   = target.path.map(n =>
+                n.replace("CAPABILITY::","").replace("ACTION::","")).join(" → ");
+            stepEl.textContent   = `Risk ${target.risk?.toFixed(0)}  ·  ${target.severity}`;
+
+            // Dim everything to near-invisible
+            nodes.forEach(n => { n.opacity = 0.06; nodes.update(n); });
+            edges.forEach(e => {
+                e.color = { color:"#0f172a", highlight:"#0f172a", hover:"#0f172a" };
+                e.width = 1;
+                edges.update(e);
+            });
+            network.fit({ animation: { duration: 600, easingFunction: "easeInOutQuad" } });
+
+            const path     = target.path;
+            const STEP_MS  = 750;          // delay between nodes
+            const BREACH_DELAY = 450;      // extra pause on final node
+
+            // Colours for each stage
+            const STAGE_COLOR = [
+                "#3b82f6",   // initial principal — blue
+                "#f97316",   // mid-hop — orange
+                "#ef4444",   // penultimate — red
+            ];
+            const BREACH_COLOR = "#ef4444";
+
+            function getStageColor(i) {
+                if (i === 0)             return STAGE_COLOR[0];
+                if (i === path.length-1) return BREACH_COLOR;
+                return STAGE_COLOR[Math.min(1, i)];
+            }
+
+            function animateStep(i) {
+                if (i >= path.length) {
+                    // BREACH reached
+                    status.textContent = "⚠  BREACH DETECTED";
+                    const nextIdx = _simIndex + 1 <= _simQueue.length ? _simIndex + 1 : 1;
+                    stepEl.textContent = `Risk ${target.risk?.toFixed(0)}  ·  ${target.severity}  ·  click again for path ${nextIdx}/${_simQueue.length}`;
+                    document.getElementById("simDot").style.background = "#ef4444";
+
+                    // Flash the final capability node bright red
+                    const lastNode = nodes.get(path[path.length - 1]);
+                    if (lastNode) {
+                        let flash = 0;
+                        const flashTimer = setInterval(() => {
+                            lastNode.color = { background: flash++ % 2 === 0 ? "#ef4444" : "#7f1d1d",
+                                              border: "#ef4444" };
+                            nodes.update(lastNode);
+                        }, 250);
+                        setTimeout(() => {
+                            clearInterval(flashTimer);
+                            resetSimulation();
+                        }, 2800);
+                    } else {
+                        setTimeout(resetSimulation, 2500);
+                    }
+                    return;
+                }
+
+                // Light up node i
+                const nodeId = path[i];
+                const col    = getStageColor(i);
+                const n      = nodes.get(nodeId);
+                if (n) {
+                    n.opacity = 1;
+                    n.color   = { background: col, border: col };
+                    n.size    = (n.size || 20) * 1.4;
+                    n.font    = { ...n.font, color: "#ffffff", strokeWidth: 2 };
+                    nodes.update(n);
+                    network.focus(nodeId, {
+                        scale: 1.1,
+                        animation: { duration: 350, easingFunction: "easeInOutQuad" }
+                    });
+                }
+
+                // Light up edge from i-1 → i
+                if (i > 0) {
+                    edges.get({ filter: e => e.from === path[i-1] && e.to === path[i] })
+                         .forEach(e => {
+                             e.color = { color: col, highlight: col, hover: col };
+                             e.width = 4;
+                             e.arrows = { to: { enabled: true, scaleFactor: 1.2 } };
+                             edges.update(e);
+                         });
+                }
+
+                stepEl.textContent = `Step ${i+1} / ${path.length}`;
+                setTimeout(() => animateStep(i + 1),
+                    i === path.length - 2 ? STEP_MS + BREACH_DELAY : STEP_MS);
+            }
+
+            function resetSimulation() {
+                _simRunning = false;
+                banner.style.display = "none";
+                if (btn) btn.disabled = false;
+                applyBaseNodeStyles();
+                nodes.forEach(n => { n.opacity = 1; nodes.update(n); });
+                edges.forEach(e => {
+                    e.color = undefined; e.width = 1;
+                    edges.update(e);
+                });
+                network.fit({ animation: { duration: 600, easingFunction: "easeInOutQuad" } });
+            }
+
+            // Kick off
+            setTimeout(() => animateStep(0), 500);
+        }
+
         /*  GRAPH SEVERITY FILTER  */
         function filterGraphBySeverity(level, updateButtons = true) {
             applyBaseNodeStyles();
@@ -697,17 +920,25 @@
             }
         }
 
-        /*  TABLE CLICK  */
+        /*  TABLE CLICK — open investigation panel only when clicking a data cell  */
         document.querySelectorAll(".finding-row").forEach(row => {
             row.addEventListener("click", function (e) {
-                if (e.target.classList.contains('btn-suppress')) return;
-                const path = JSON.parse(this.dataset.path);
+                // Ignore clicks on any interactive element inside the row
+                if (e.target.closest('button, input, a, .path-group-toggle')) return;
+                // Ignore child rows (they don't have full data)
+                if (this.dataset.groupRole === 'child') return;
+
+                const path = JSON.parse(this.dataset.path || '[]');
                 const cf   = this.dataset.conditions ? JSON.parse(this.dataset.conditions) : {};
                 highlightPath(path);
                 openPanel({
-                    principal: this.cells[0].innerText, capability: this.cells[1].innerText,
-                    risk: this.cells[2].innerText, severity: this.cells[3].innerText,
-                    pattern: this.cells[4].innerText, mitre: this.cells[5].innerText,
+                    principal:   this.dataset.principal  || '',
+                    capability:  this.dataset.capability || '',
+                    risk:        this.cells[2]?.innerText?.trim() || '',
+                    severity:    this.cells[3]?.innerText?.trim() || '',
+                    pattern:     this.dataset.pattern    || '',
+                    mitre:       this.dataset.mitre      || '',
+                    account_id:  this.dataset.account    || '',
                     path, condition_flags: cf,
                 });
             });
@@ -730,18 +961,346 @@
             const filter  = document.getElementById("searchInput").value.toLowerCase();
             const pattern = document.getElementById("patternFilter")?.value || "";
             let visible   = 0;
+
+            // Track which pattern sections have at least one visible row
+            const sidVisible = {};
+
             document.querySelectorAll("#findingsTable tbody tr").forEach(row => {
-                const sev     = row.dataset.severity || "";
-                const text    = Array.from(row.cells).slice(0, 6).map(c => c.innerText.toLowerCase()).join(" ");
-                const sevOk   = activeSeverityFilter === 'ALL' || sev === activeSeverityFilter;
-                const textOk  = !filter  || text.includes(filter);
-                const patOk   = !pattern || text.includes(pattern.toLowerCase().replace(/_/g, ' '));
-                const show    = sevOk && textOk && patOk;
+                // Pattern section headers — handled after rows are processed
+                if (row.classList.contains('pattern-section-hdr')) return;
+                // Child rows are controlled by their parent — skip them here
+                if (row.dataset.groupRole === 'child') return;
+
+                const sev    = row.dataset.severity || "";
+                const text   = Array.from(row.cells).slice(0, 7).map(c => c.innerText.toLowerCase()).join(" ");
+                const sevOk  = activeSeverityFilter === 'ALL' || sev === activeSeverityFilter;
+                const textOk = !filter  || text.includes(filter);
+                const patOk  = !pattern || text.includes(pattern.toLowerCase().replace(/_/g, ' '));
+                const show   = sevOk && textOk && patOk;
                 row.style.display = show ? "" : "none";
-                if (show) visible++;
+                if (show) {
+                    visible++;
+                    const sid = row.dataset.patternSid;
+                    if (sid) sidVisible[sid] = true;
+                }
+
+                // Keep children in sync: show only when parent is visible AND group is expanded
+                if (row.dataset.groupId) {
+                    const arrow      = row.querySelector('.toggle-arrow');
+                    const isExpanded = arrow && arrow.textContent === '▼';
+                    document.querySelectorAll(
+                        `tr[data-group-id="${row.dataset.groupId}"][data-group-role="child"]`
+                    ).forEach(child => {
+                        child.style.display = (show && isExpanded) ? '' : 'none';
+                    });
+                }
             });
+
+            // Show/hide section headers based on whether they have visible rows
+            document.querySelectorAll('#findingsTable tr.pattern-section-hdr').forEach(hdr => {
+                hdr.style.display = sidVisible[hdr.dataset.sid] ? '' : 'none';
+            });
+
             const badge = document.getElementById('findingsCountBadge');
             if (badge) badge.textContent = visible < totalFindings ? `${visible} / ${totalFindings}` : totalFindings;
+        }
+
+        /* ── GROUP DUPLICATE FINDINGS ──────────────────────────────────────── */
+        function groupDuplicateFindings() {
+            const tbody = document.querySelector("#findingsTable tbody");
+            if (!tbody) return;
+
+            const rows = Array.from(tbody.querySelectorAll("tr.finding-row"));
+            const groups = new Map();
+            rows.forEach(row => {
+                const key = (row.dataset.principal || '') + '||' + (row.dataset.capability || '');
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(row);
+            });
+
+            let gIdx = 0;
+            groups.forEach(groupRows => {
+                groupRows[0].dataset.groupRole = groupRows.length === 1 ? 'single' : 'parent';
+                if (groupRows.length < 2) return;
+
+                const gid    = `grp${gIdx++}`;
+                const parent = groupRows[0];
+                parent.dataset.groupId   = gid;
+                parent.dataset.groupSize = groupRows.length;
+                // Do NOT override borderLeft — CSS severity accent color takes priority
+
+                // Inject group badge into the Finding cell (after .capability-label)
+                const findingCell = parent.cells[1];
+                if (findingCell) {
+                    const badge = document.createElement('div');
+                    badge.style.cssText = 'margin-top:6px;';
+                    badge.innerHTML = `
+                        <button class="path-group-toggle" onclick="togglePathGroup('${gid}',this)"
+                            style="display:inline-flex;align-items:center;gap:5px;
+                                   background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.38);
+                                   color:#a78bfa;padding:3px 10px;border-radius:20px;
+                                   font-size:0.73rem;font-family:var(--mono);cursor:pointer;
+                                   white-space:nowrap;transition:background 0.15s;">
+                            <span class="toggle-arrow">▶</span>
+                            <span>${groupRows.length} attack paths</span>
+                        </button>`;
+                    const capLabel = findingCell.querySelector('.capability-label');
+                    if (capLabel) capLabel.after(badge); else findingCell.appendChild(badge);
+                }
+
+                // Process child rows — show only their unique path in the finding cell
+                groupRows.slice(1).forEach((child) => {
+                    child.dataset.groupRole = 'child';
+                    child.dataset.groupId   = gid;
+                    child.style.display     = 'none';
+                    child.style.borderLeft  = '3px solid rgba(124,58,237,0.2)';
+                    child.style.background  = 'rgba(124,58,237,0.04)';
+
+                    if (child.cells[1]) {
+                        const childPath = JSON.parse(child.dataset.path || '[]');
+                        const via = childPath.slice(1, -1)
+                            .map(n => n.replace('CAPABILITY::','').replace('ACTION::',''))
+                            .join(' → ') || 'direct';
+                        child.cells[1].innerHTML =
+                            `<span style="color:#a78bfa;font-family:var(--mono);
+                                          padding-left:8px;margin-right:6px;font-size:0.8rem;">↳</span>` +
+                            `<span style="font-family:var(--mono);font-size:0.8rem;
+                                          color:#c4b5fd;font-weight:500;">${via}</span>`;
+                    }
+                    // Slightly dim secondary cells so the via-path stands out
+                    [2,3,4,5,6,7].forEach(ci => {
+                        if (child.cells[ci]) child.cells[ci].style.opacity = '0.8';
+                    });
+                });
+            });
+        }
+
+        function togglePathGroup(gid, btn) {
+            const children   = document.querySelectorAll(
+                `tr[data-group-id="${gid}"][data-group-role="child"]`);
+            const arrow      = btn.querySelector('.toggle-arrow');
+            const isExpanded = arrow.textContent === '▼';
+            children.forEach(c => { c.style.display = isExpanded ? 'none' : ''; });
+            arrow.textContent  = isExpanded ? '▶' : '▼';
+            btn.style.background = isExpanded
+                ? 'rgba(124,58,237,0.13)'
+                : 'rgba(124,58,237,0.25)';
+        }
+
+        // Scripts are at bottom of body — DOM is already ready, call directly
+
+        /* ── SECURITY SCORE ─────────────────────────────────────────────────── */
+        (function computeSecurityScore() {
+            const nc  = allFindings.filter(f => f.severity === 'CRITICAL').length;
+            const nh  = allFindings.filter(f => f.severity === 'HIGH').length;
+            const nm  = allFindings.filter(f => f.severity === 'MEDIUM').length;
+            const nl  = allFindings.filter(f => f.severity === 'LOW').length;
+            const nxa = allFindings.filter(f => f.cross_account).length;
+            let ded   = 0;
+            ded += Math.min(nc * 9,  52);
+            ded += Math.min(nh * 4,  24);
+            ded += Math.min(nm * 1.5, 14);
+            ded += Math.min(nl * 0.5,  7);
+            if (nxa > 0) ded = Math.min(ded * 1.2, 95);
+            const score = allFindings.length === 0 ? 100 : Math.max(4, Math.round(100 - ded));
+            const grade = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F';
+            const gColor = { A:'#22c55e', B:'#86efac', C:'#eab308', D:'#f97316', F:'#ef4444' }[grade];
+            const gEl = document.getElementById('securityGrade');
+            const lEl = document.getElementById('securityScoreLabel');
+            const card = document.getElementById('scoreCard');
+            if (gEl) { gEl.textContent = grade; gEl.style.color = gColor; }
+            if (lEl) { lEl.textContent = `${score} / 100`; }
+            if (card) { card.style.borderLeft = `3px solid ${gColor}`; }
+        })();
+
+        /* ── COMPLIANCE FRAMEWORK MAP ────────────────────────────────────────── */
+        const COMPLIANCE_MAP = {
+            PASSROLE_COMPUTE_EXECUTION: { cis:['1.16','1.22'], soc2:['CC6.3','CC6.6'], nist:['AC-6(1)','AC-2'] },
+            PASSROLE_LAMBDA:            { cis:['1.16','1.22'], soc2:['CC6.3','CC6.6'], nist:['AC-6(1)','AC-2'] },
+            POLICY_MANIPULATION:        { cis:['1.15','1.16'], soc2:['CC6.3'],         nist:['AC-6','AC-3'] },
+            USER_CREATION:              { cis:['1.22'],         soc2:['CC6.2'],         nist:['AC-2','AC-6'] },
+            ACCESS_KEY_PERSISTENCE:     { cis:['1.4','1.12'],   soc2:['CC6.1','CC6.3'], nist:['AC-2','IA-5'] },
+            LOGIN_PROFILE_PERSISTENCE:  { cis:['1.2','1.10'],   soc2:['CC6.1'],         nist:['AC-2','IA-5'] },
+            ROLE_ASSUMPTION_ABUSE:      { cis:['1.16'],         soc2:['CC6.3'],         nist:['AC-6','AC-14'] },
+            CROSS_ACCOUNT_PIVOT:        { cis:['1.20'],         soc2:['CC6.6'],         nist:['AC-4','SC-7'] },
+            WILDCARD_IAM:               { cis:['1.16'],         soc2:['CC6.3'],         nist:['AC-6'] },
+        };
+        function getCompliance(pattern) {
+            for (const key of Object.keys(COMPLIANCE_MAP)) {
+                if (pattern.includes(key)) return COMPLIANCE_MAP[key];
+            }
+            return null;
+        }
+        function renderCompliance(pattern) {
+            const c = getCompliance(pattern);
+            if (!c) return null;
+            const pill = (label, color, items) =>
+                items.map(v => `<span style="
+                    display:inline-block;margin:2px 3px;padding:2px 8px;border-radius:4px;
+                    font-size:0.68rem;font-weight:700;font-family:var(--mono);
+                    background:${color}1a;color:${color};border:1px solid ${color}44;">
+                    ${label} ${v}</span>`).join('');
+            return `
+                <div style="margin-bottom:6px;font-size:0.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">CIS AWS v1.5</div>
+                <div style="margin-bottom:10px;">${pill('', '#f97316', c.cis)}</div>
+                <div style="margin-bottom:6px;font-size:0.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">SOC 2 TSC</div>
+                <div style="margin-bottom:10px;">${pill('', '#22c55e', c.soc2)}</div>
+                <div style="margin-bottom:6px;font-size:0.75rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:600;">NIST 800-53</div>
+                <div>${pill('', '#60a5fa', c.nist)}</div>`;
+        }
+
+        /* ── AWS SIMULATE COMMAND ────────────────────────────────────────────── */
+        function buildSimulateCmd(finding) {
+            const actions = (finding.path || [])
+                .filter(n => n.startsWith('ACTION::'))
+                .map(n => n.replace('ACTION::', ''));
+            if (!actions.length) {
+                const cap = finding.capability || '';
+                if (cap.includes('AccessKey'))    actions.push('iam:CreateAccessKey');
+                else if (cap.includes('RolePolicy')) actions.push('iam:AttachRolePolicy');
+                else if (cap.includes('PassRole')) actions.push('iam:PassRole');
+                else if (cap.includes('LoginProfile')) actions.push('iam:CreateLoginProfile');
+                else if (cap.includes('AssumeRole')) actions.push('sts:AssumeRole');
+                else actions.push('iam:*');
+            }
+            const account = finding.account_id || '<ACCOUNT_ID>';
+            const p = finding.principal || '';
+            const isRole = p.toLowerCase().includes('role');
+            const arnType = isRole ? 'role' : 'user';
+            const arn = `arn:aws:iam::${account}:${arnType}/${p}`;
+            return [
+                `aws iam simulate-principal-policy \\`,
+                `  --policy-source-arn "${arn}" \\`,
+                `  --action-names ${actions.map(a => `"${a}"`).join(' ')} \\`,
+                `  --resource-arns "*" \\`,
+                `  --query "EvaluationResults[].{Action:EvalActionName,Decision:EvalDecision}" \\`,
+                `  --output table`
+            ].join('\n');
+        }
+        function copySimulateCmd() {
+            const pre = document.getElementById('attackSimulateCmd');
+            if (!pre) return;
+            navigator.clipboard.writeText(pre.textContent).then(() => showToast('Command copied!', 'success'));
+        }
+
+        // Initialise severity distribution bars (widths set via JS to avoid Jinja-in-style linting errors)
+        document.querySelectorAll('.js-sev-bar').forEach(bar => {
+            const n = +bar.dataset.n;
+            if (!n) return;
+            const vals = [+bar.dataset.c, +bar.dataset.h, +bar.dataset.m, +bar.dataset.l];
+            bar.querySelectorAll('span').forEach((sp, i) => {
+                sp.style.width = (vals[i] / n * 100).toFixed(1) + '%';
+            });
+        });
+
+        groupDuplicateFindings();
+        addPatternSections();
+
+        /* ── PATTERN SECTION HEADERS ────────────────────────────────────── */
+        // Re-orders tbody so all rows of the same pattern are together,
+        // then inserts ONE collapsible header per unique pattern.
+        function addPatternSections() {
+            const tbody = document.querySelector('#findingsTable tbody');
+            if (!tbody) return;
+
+            // Clean up any stale headers from a previous run
+            tbody.querySelectorAll('tr.pattern-section-hdr').forEach(h => h.remove());
+
+            // Collect parent/single rows only
+            const dataRows = Array.from(tbody.querySelectorAll('tr.finding-row')).filter(
+                r => r.dataset.groupRole !== 'child'
+            );
+            if (!dataRows.length) return;
+
+            // Build pattern → rows map (preserving first-seen insertion order)
+            const patternMap = new Map();
+            dataRows.forEach(row => {
+                // Use data-pattern (underscored key) and display as humanised label
+                const rawPat = row.dataset.pattern || (row.cells[4]?.innerText || '').trim();
+                const pat = rawPat.replace(/_/g, ' ');
+                if (!patternMap.has(pat)) patternMap.set(pat, []);
+                patternMap.get(pat).push(row);
+            });
+
+            // Sort patterns: CRITICAL-dominant first, then by finding count desc
+            const sevRank  = { CRITICAL:4, HIGH:3, MEDIUM:2, LOW:1 };
+            const domSev   = rows => rows.reduce((best, r) => {
+                const s = r.dataset.severity || 'LOW';
+                return (sevRank[s]||0) > (sevRank[best]||0) ? s : best;
+            }, 'LOW');
+
+            const sorted = [...patternMap.entries()].sort(([,a],[,b]) => {
+                const diff = (sevRank[domSev(b)]||0) - (sevRank[domSev(a)]||0);
+                return diff !== 0 ? diff : b.length - a.length;
+            });
+
+            const SEV_COLOR = { CRITICAL:'#ef4444', HIGH:'#f97316', MEDIUM:'#eab308', LOW:'#22c55e' };
+
+            // Rebuild tbody: header → parent rows + their children, per pattern
+            sorted.forEach(([pattern, rows]) => {
+                const top  = domSev(rows);
+                const col  = SEV_COLOR[top] || '#94a3b8';
+                const total = rows.reduce((n, r) =>
+                    n + parseInt(r.dataset.groupSize || '1'), 0);
+                const sid  = `ps_${pattern.replace(/\W+/g,'_')}`;
+
+                // Section header
+                const hdr = document.createElement('tr');
+                hdr.className   = 'pattern-section-hdr';
+                hdr.dataset.sid = sid;
+                hdr.innerHTML   = `
+                    <td colspan="8" class="pattern-section-cell">
+                        <button onclick="togglePatternSection('${sid}',this)"
+                                style="display:inline-flex;align-items:center;gap:10px;
+                                       background:none;border:none;cursor:pointer;
+                                       width:100%;text-align:left;padding:0;">
+                            <span class="ps-arrow" style="color:${col};font-size:0.72rem;width:10px;">▼</span>
+                            <span style="font-weight:700;font-size:0.77rem;letter-spacing:0.07em;
+                                         text-transform:uppercase;color:${col};">${pattern}</span>
+                            <span style="background:${col}1a;border:1px solid ${col}44;color:${col};
+                                         border-radius:20px;padding:1px 10px;font-size:0.71rem;
+                                         font-weight:700;white-space:nowrap;">
+                                ${total} finding${total!==1?'s':''}
+                            </span>
+                            <span style="flex:1;height:1px;
+                                         background:linear-gradient(90deg,${col}55,transparent);"></span>
+                        </button>
+                    </td>`;
+                tbody.appendChild(hdr);
+
+                // Move parent rows + their children right after the header
+                rows.forEach(row => {
+                    row.dataset.patternSid = sid;
+                    tbody.appendChild(row);
+                    const gid = row.dataset.groupId;
+                    if (gid) {
+                        tbody.querySelectorAll(
+                            `tr[data-group-id="${gid}"][data-group-role="child"]`
+                        ).forEach(child => {
+                            child.dataset.patternSid = sid;
+                            tbody.appendChild(child);
+                        });
+                    }
+                });
+            });
+        }
+
+        function togglePatternSection(sid, btn) {
+            const arrow  = btn.querySelector('.ps-arrow');
+            const isOpen = arrow.textContent === '▼';
+            document.querySelectorAll(
+                `#findingsTable tr.finding-row[data-pattern-sid="${sid}"]`
+            ).forEach(row => {
+                row.style.display = isOpen ? 'none' : '';
+                const gid = row.dataset.groupId;
+                if (gid && row.dataset.groupRole === 'parent') {
+                    const childOpen = row.querySelector('.toggle-arrow')?.textContent === '▼';
+                    document.querySelectorAll(
+                        `tr[data-group-id="${gid}"][data-group-role="child"]`
+                    ).forEach(c => { c.style.display = (isOpen || !childOpen) ? 'none' : ''; });
+                }
+            });
+            arrow.textContent = isOpen ? '▶' : '▼';
         }
 
         /* CSV Export */
@@ -767,7 +1326,10 @@
 
         function sortTable(col) {
             const tbody = document.querySelector("#findingsTable tbody");
-            const rows  = Array.from(tbody.querySelectorAll("tr"));
+            // Only sort parent/single rows (not section headers or child rows)
+            const rows  = Array.from(tbody.querySelectorAll(
+                "tr.finding-row:not([data-group-role='child'])"
+            ));
             const asc   = sortState.col === col ? !sortState.asc : true;
             sortState   = { col, asc };
             rows.sort((a, b) => {
@@ -777,10 +1339,14 @@
                 if (col === 3) { const oa = SEV_ORDER[va] || 0, ob = SEV_ORDER[vb] || 0; return asc ? oa - ob : ob - oa; }
                 return asc ? va.localeCompare(vb) : vb.localeCompare(va);
             });
+            // Move sorted parent rows to end; addPatternSections will re-add section headers
+            // Child rows stay in tbody so addPatternSections can find them by data-group-id
             rows.forEach(r => tbody.appendChild(r));
+            // Re-run grouping so section headers reflect the new sort order
+            addPatternSections();
             document.querySelectorAll("#findingsTable th.sortable").forEach((th, i) => {
                 const icon = th.querySelector(".sort-icon");
-                if (icon) icon.textContent = i === col ? (asc ? "↑" : "↓") : "⇅";
+                if (icon) icon.textContent = (i + 1) === col ? (asc ? "↑" : "↓") : "⇅";
             });
         }
 
@@ -980,6 +1546,26 @@
             generateAttackSteps(finding.path);
             document.getElementById("attackImpact").innerText    = generateImpact(finding);
             document.getElementById("attackMitigation").innerText = generateMitigation(finding);
+
+            // Compliance section
+            const compHtml = renderCompliance(finding.pattern || '');
+            const compSection = document.getElementById('panelCompliance');
+            const compEl = document.getElementById('attackCompliance');
+            if (compHtml && compSection && compEl) {
+                compEl.innerHTML = compHtml;
+                compSection.style.display = '';
+            } else if (compSection) {
+                compSection.style.display = 'none';
+            }
+
+            // Simulate command section
+            const simCmd = buildSimulateCmd(finding);
+            const simSection = document.getElementById('panelSimulate');
+            const simEl = document.getElementById('attackSimulateCmd');
+            if (simSection && simEl) {
+                simEl.textContent = simCmd;
+                simSection.style.display = '';
+            }
         }
         function closePanel() { document.getElementById("attackPanel").classList.add("hidden"); }
 

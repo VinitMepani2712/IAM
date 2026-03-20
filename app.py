@@ -452,5 +452,6 @@ db.init_db()
 
 if __name__ == "__main__":
     port  = int(os.environ.get("PORT", 5000))
-    debug = os.environ.get("IAM_LOG_LEVEL", "INFO").upper() == "DEBUG"
+    # debug = os.environ.get("IAM_LOG_LEVEL", "INFO").upper() == "DEBUG"
+    debug = True
     app.run(debug=debug, port=port)
