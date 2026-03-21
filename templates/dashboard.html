@@ -435,7 +435,8 @@
                         data-capability="{{ f.capability | e }}"
                         data-mitre="{{ f.mitre | e }}"
                         data-pattern="{{ f.pattern | e }}"
-                        data-account="{{ f.get('account_id', '') | e }}">
+                        data-account="{{ f.get('account_id', '') | e }}"
+                        data-risk="{{ f.risk | int }}">
                         <!-- col 0: checkbox -->
                         <td style="text-align:center;width:32px;">
                             <input type="checkbox" class="finding-select" onchange="onFindingSelect()" style="cursor:pointer;accent-color:#7c3aed;">
@@ -920,17 +921,19 @@
             row.addEventListener("click", function (e) {
                 // Ignore clicks on any interactive element inside the row
                 if (e.target.closest('button, input, a, .path-group-toggle')) return;
-                // Ignore child rows (they don't have full data)
-                if (this.dataset.groupRole === 'child') return;
 
                 const path = JSON.parse(this.dataset.path || '[]');
                 const cf   = this.dataset.conditions ? JSON.parse(this.dataset.conditions) : {};
                 highlightPath(path);
+
+                // Child rows: highlight graph path + open panel using data attributes
+                // (cells[1] is replaced with via-path text, so always use dataset values)
+                const isChild = this.dataset.groupRole === 'child';
                 openPanel({
                     principal:   this.dataset.principal  || '',
                     capability:  this.dataset.capability || '',
-                    risk:        this.cells[2]?.innerText?.trim() || '',
-                    severity:    this.cells[3]?.innerText?.trim() || '',
+                    risk:        isChild ? (this.dataset.risk || '') : (this.cells[2]?.innerText?.trim() || ''),
+                    severity:    this.dataset.severity   || '',
                     pattern:     this.dataset.pattern    || '',
                     mitre:       this.dataset.mitre      || '',
                     account_id:  this.dataset.account    || '',
