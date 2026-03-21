@@ -1239,3 +1239,22 @@ body.light-mode .badge-xacct {
 .sev-dist-bar .sdb-high     { background: #f97316; }
 .sev-dist-bar .sdb-medium   { background: #eab308; }
 .sev-dist-bar .sdb-low      { background: #22c55e; }
+
+/* ── Animations ───────────────────────────────────────────────── */
+@keyframes spin     { to { transform: rotate(360deg); } }
+@keyframes graphSpin { to { transform: rotate(360deg); } }
+@keyframes simPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+@keyframes nodePop  { 0%{transform:scale(1)} 50%{transform:scale(1.35)} 100%{transform:scale(1)} }
+
+/* ── Simulate button hover ────────────────────────────────────── */
+#btn-simulate:hover { background: rgba(239,68,68,0.22) !important; }
+
+/* ── Risk bar hover ───────────────────────────────────────────── */
+.risk-bar-hover:hover { opacity: 0.85; }
+
+/* ── Status badges ────────────────────────────────────────────── */
+.status-badge          { font-size:0.72rem; padding:2px 8px; border-radius:4px; white-space:nowrap; }
+.status-open           { color:#64748b; }
+.status-investigating  { background:#1c1a09; color:#fde68a; border:1px solid #854d0e; }
+.status-in_remediation { background:#0c1a2e; color:#93c5fd; border:1px solid #1d4ed8; }
+.status-accepted_risk  { background:#14532d; color:#86efac; border:1px solid #166534; }

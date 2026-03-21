@@ -303,11 +303,6 @@
                 <span id="simPath"   style="color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
                 <span id="simStep"   style="color:var(--text-muted);white-space:nowrap;"></span>
             </div>
-            <style>
-                @keyframes simPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
-                @keyframes nodePop  { 0%{transform:scale(1)} 50%{transform:scale(1.35)} 100%{transform:scale(1)} }
-                #btn-simulate:hover { background:rgba(239,68,68,0.22)!important; }
-            </style>
 
             <!-- Severity filter chips -->
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
@@ -354,7 +349,7 @@
                 <span><span style="display:inline-block;width:22px;height:3px;background:#ef4444;border-radius:2px;margin-right:6px;vertical-align:middle;border-top:2px dashed #ef4444;"></span>Cross-Account Pivot</span>
             </div>
 
-            <style>@keyframes graphSpin { to { transform: rotate(360deg); } }</style>
+
         </section>
 
         <!--  TABLE  -->
@@ -1866,15 +1861,6 @@
     })();
     </script>
 
-    <style>
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .risk-bar-hover:hover { opacity: 0.85; }
-        .status-badge { font-size:0.72rem; padding:2px 8px; border-radius:4px; white-space:nowrap; }
-        .status-open          { color:#64748b; }
-        .status-investigating  { background:#1c1a09; color:#fde68a; border:1px solid #854d0e; }
-        .status-in_remediation { background:#0c1a2e; color:#93c5fd; border:1px solid #1d4ed8; }
-        .status-accepted_risk  { background:#14532d; color:#86efac; border:1px solid #166534; }
-    </style>
 
 </body>
 </html>
