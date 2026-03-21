@@ -33,18 +33,21 @@ body.light-mode {
     color: var(--text-main);
 }
 
-/* Sidebar stays dark in light mode — intentional contrast */
+/* Sidebar in light mode */
 body.light-mode .sidebar {
-    background: #1e293b;
-    border-right-color: #334155;
+    background: #ffffff;
+    border-right-color: #e2e8f0;
 }
-body.light-mode .nav-item        { color: #cbd5e1; }
-body.light-mode .nav-item:hover  { background: rgba(255,255,255,0.08); color: #f1f5f9; }
-body.light-mode .nav-item.active { background: rgba(59,130,246,0.22); color: #93c5fd; }
-body.light-mode .nav-label       { color: #94a3b8; }
-body.light-mode .brand           { color: #93c5fd; }
-body.light-mode #themeToggle     { color: #94a3b8; border-color: #334155; }
-body.light-mode #themeToggle:hover { background: rgba(255,255,255,0.08); color: #e2e8f0; }
+body.light-mode .nav-item        { color: #4b5563; }
+body.light-mode .nav-item:hover  { background: #f1f5f9; color: #0f172a; }
+body.light-mode .nav-item.active { background: #dbeafe; color: #1d4ed8; }
+body.light-mode .nav-item.active svg { color: #1d4ed8; }
+body.light-mode .nav-label       { color: #9ca3af; }
+body.light-mode .brand-name      { color: #0f172a; }
+body.light-mode .brand-sub       { color: #9ca3af; }
+body.light-mode .brand-divider   { border-color: #e2e8f0; }
+body.light-mode #themeToggle     { color: #4b5563; border-color: #e2e8f0; }
+body.light-mode #themeToggle:hover { background: #f1f5f9; color: #0f172a; }
 
 /* Main content area */
 body.light-mode .top-bar         { background: transparent; }
@@ -111,7 +114,7 @@ body.light-mode code             { background: #f1f5f9; color: #1d4ed8; }
 /* Attack panel (side drawer) */
 body.light-mode .attack-panel    { background: #ffffff; border-left-color: #e2e8f0; color: #0f172a; box-shadow: -8px 0 30px rgba(0,0,0,0.12); }
 body.light-mode .panel-section li { color: #374151; }
-body.light-mode .panel-header button { color: #374151; border-color: #e2e8f0; }
+body.light-mode .btn-close-panel { color: #374151 !important; border-color: #e2e8f0 !important; background: transparent; }
 
 /* Path selector + graph loading overlay */
 body.light-mode #pathSelector    { background: #f8fafc; color: #0f172a; border-color: #cbd5e1; }
@@ -533,6 +536,20 @@ tbody tr:hover {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 20px;
+}
+
+.btn-close-panel {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-main);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background 0.15s, color 0.15s;
+}
+.btn-close-panel:hover {
+    background: rgba(255,255,255,0.08);
 }
 
 .panel-section {
