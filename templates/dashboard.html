@@ -44,14 +44,14 @@
             <div class="modal-body" style="padding:20px;">
                 <p id="noteModalTitle" style="color:#94a3b8;font-size:0.82rem;margin-bottom:14px;"></p>
                 <label style="display:block;font-size:0.8rem;color:#94a3b8;margin-bottom:6px;">Status</label>
-                <select id="noteStatus" style="width:100%;background:#0f172a;color:#f1f5f9;border:1px solid #334155;border-radius:8px;padding:8px 10px;font-size:0.85rem;margin-bottom:14px;">
+                <select id="noteStatus" class="modal-form-input" style="width:100%;border-radius:8px;padding:8px 10px;font-size:0.85rem;margin-bottom:14px;">
                     <option value="open">— Open</option>
                     <option value="investigating">🔍 Investigating</option>
                     <option value="in_remediation">🔧 In Remediation</option>
                     <option value="accepted_risk">✅ Accepted Risk</option>
                 </select>
                 <label style="display:block;font-size:0.8rem;color:#94a3b8;margin-bottom:6px;">Note (optional)</label>
-                <textarea id="noteText" rows="3" style="width:100%;background:#0f172a;color:#f1f5f9;border:1px solid #334155;border-radius:8px;padding:8px 10px;font-size:0.85rem;resize:vertical;box-sizing:border-box;" placeholder="e.g. Ticket #1234, owner: alice@company.com"></textarea>
+                <textarea id="noteText" rows="3" class="modal-form-input" style="width:100%;border-radius:8px;padding:8px 10px;font-size:0.85rem;resize:vertical;box-sizing:border-box;" placeholder="e.g. Ticket #1234, owner: alice@company.com"></textarea>
                 <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end;">
                     <button onclick="clearNote()" style="padding:7px 16px;border-radius:8px;border:1px solid #334155;background:transparent;color:#94a3b8;cursor:pointer;">Clear</button>
                     <button onclick="saveNote()" style="padding:7px 18px;border-radius:8px;background:#166534;color:#86efac;border:none;cursor:pointer;font-weight:600;">Save</button>
@@ -318,7 +318,7 @@
             <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
                 <label style="color:var(--text-muted);font-size:0.85rem;white-space:nowrap;">🔍 Isolate path:</label>
                 <select id="pathSelector" onchange="selectPath(this.value)" style="flex:1; min-width:280px; max-width:560px;
-                    padding:8px 12px; border-radius:8px; background:#0b1220; border:1px solid var(--border);
+                    padding:8px 12px; border-radius:8px; border:1px solid var(--border);
                     color:var(--text-main); font-size:0.85rem; cursor:pointer;">
                     <option value="">— Show all escalation paths —</option>
                 </select>
@@ -553,14 +553,8 @@
             </div>
             <div class="panel-section" id="panelSimulate" style="display:none;">
                 <h4>Verify with AWS CLI</h4>
-                <pre id="attackSimulateCmd" style="
-                    background:#0b1220;border:1px solid #1e293b;border-radius:8px;
-                    padding:12px 14px;font-size:0.75rem;color:#86efac;
-                    overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin:0;"></pre>
-                <button onclick="copySimulateCmd()" style="
-                    margin-top:8px;padding:5px 14px;border-radius:6px;
-                    background:#0f4c2a;color:#86efac;border:1px solid #166534;
-                    cursor:pointer;font-size:0.78rem;font-weight:600;">
+                <pre id="attackSimulateCmd" class="sim-cmd-pre"></pre>
+                <button onclick="copySimulateCmd()" class="btn-copy-cmd">
                     📋 Copy Command
                 </button>
             </div>
@@ -603,9 +597,9 @@
 
         function makeTooltip(type, name) {
             const div = document.createElement("div");
-            div.style.cssText = "background:#1e293b;border:1px solid #334155;border-radius:8px;padding:8px 12px;font-family:Inter,system-ui,sans-serif;font-size:12px;color:#e2e8f0;max-width:240px;box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+            div.className = "graph-tooltip";
             const label = document.createElement("div");
-            label.style.cssText = "font-weight:700;color:#94a3b8;font-size:10px;text-transform:uppercase;margin-bottom:4px;";
+            label.className = "graph-tooltip-label";
             label.textContent = type;
             const value = document.createElement("div");
             value.style.cssText = "font-weight:600;word-break:break-all;";
@@ -1628,19 +1622,19 @@
                 }
                 const steps = (data.remediation_steps || []).map(s => `<li style="margin-bottom:6px;">${escHtml(s)}</li>`).join('');
                 const policyCode = data.iam_policy_fix
-                    ? `<h4 style="color:#94a3b8;font-size:0.78rem;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 6px;">IAM Policy Fix</h4>
-                       <pre style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:14px;font-size:0.78rem;overflow-x:auto;color:#86efac;">${escHtml(data.iam_policy_fix)}</pre>` : '';
+                    ? `<h4 class="ai-section-label">IAM Policy Fix</h4>
+                       <pre class="ai-code-block ai-code-green">${escHtml(data.iam_policy_fix)}</pre>` : '';
                 const tfCode = data.terraform_snippet
-                    ? `<h4 style="color:#94a3b8;font-size:0.78rem;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 6px;">Terraform</h4>
-                       <pre style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:14px;font-size:0.78rem;overflow-x:auto;color:#c4b5fd;">${escHtml(data.terraform_snippet)}</pre>` : '';
+                    ? `<h4 class="ai-section-label">Terraform</h4>
+                       <pre class="ai-code-block ai-code-purple">${escHtml(data.terraform_snippet)}</pre>` : '';
                 body.innerHTML = `
-                    <div style="margin-bottom:12px;padding:12px 14px;background:#0f172a;border-left:3px solid #3b82f6;border-radius:0 8px 8px 0;">
-                        <p style="margin:0;color:#cbd5e1;line-height:1.6;font-size:0.87rem;">${escHtml(data.explanation || '')}</p>
+                    <div class="ai-explanation-box">
+                        <p style="margin:0;line-height:1.6;font-size:0.87rem;">${escHtml(data.explanation || '')}</p>
                     </div>
-                    ${data.impact ? `<div style="margin-bottom:12px;padding:10px 14px;background:#1c0a09;border-left:3px solid #ef4444;border-radius:0 8px 8px 0;">
-                        <p style="margin:0;color:#fca5a5;line-height:1.6;font-size:0.84rem;"><strong>Impact:</strong> ${escHtml(data.impact)}</p></div>` : ''}
-                    <h4 style="color:#94a3b8;font-size:0.78rem;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 6px;">Remediation Steps</h4>
-                    <ol style="margin:0;padding-left:20px;color:#cbd5e1;font-size:0.84rem;line-height:1.7;">${steps}</ol>
+                    ${data.impact ? `<div class="ai-impact-box">
+                        <p style="margin:0;line-height:1.6;font-size:0.84rem;"><strong>Impact:</strong> ${escHtml(data.impact)}</p></div>` : ''}
+                    <h4 class="ai-section-label">Remediation Steps</h4>
+                    <ol class="ai-steps-list">${steps}</ol>
                     ${policyCode}${tfCode}`;
             })
             .catch(err => {
