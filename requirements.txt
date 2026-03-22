@@ -18,5 +18,5 @@ matplotlib>=3.7.0
 boto3>=1.34.0
 botocore>=1.34.0
 
-# AI-powered remediation (Claude API)
-anthropic>=0.40.0
+# AI-powered remediation (Google Gemini — free tier)
+google-generativeai>=0.7.0

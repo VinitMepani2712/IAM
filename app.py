@@ -374,17 +374,17 @@ def trend_data():
 @app.route("/api/remediate", methods=["POST"])
 def ai_remediate():
     """
-    Call Claude to generate plain-English explanation + remediation for a finding.
-    Requires ANTHROPIC_API_KEY environment variable.
+    Call Gemini to generate plain-English explanation + remediation for a finding.
+    Requires GEMINI_API_KEY environment variable (free tier at aistudio.google.com).
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
-        return jsonify({"error": "ANTHROPIC_API_KEY not configured on this server."}), 503
+        return jsonify({"error": "GEMINI_API_KEY not configured on this server."}), 503
 
     try:
-        import anthropic
+        import google.generativeai as genai
     except ImportError:
-        return jsonify({"error": "anthropic package not installed. Run: pip install anthropic"}), 503
+        return jsonify({"error": "google-generativeai package not installed."}), 503
 
     data       = request.get_json(silent=True) or {}
     principal  = data.get("principal", "Unknown")
@@ -399,11 +399,11 @@ def ai_remediate():
 
     path_str = " → ".join(path) if path else "N/A"
     cond_summary = []
-    if conditions.get("requires_mfa"):         cond_summary.append("MFA required")
-    if conditions.get("requires_external_id"):  cond_summary.append("ExternalId required")
-    if conditions.get("source_ip_restricted"):  cond_summary.append("Source IP restricted")
-    if conditions.get("org_id_required"):       cond_summary.append("Org ID required")
-    if conditions.get("region_restricted"):     cond_summary.append("Region restricted")
+    if conditions.get("requires_mfa"):          cond_summary.append("MFA required")
+    if conditions.get("requires_external_id"):   cond_summary.append("ExternalId required")
+    if conditions.get("source_ip_restricted"):   cond_summary.append("Source IP restricted")
+    if conditions.get("org_id_required"):        cond_summary.append("Org ID required")
+    if conditions.get("region_restricted"):      cond_summary.append("Region restricted")
     cond_str = ", ".join(cond_summary) if cond_summary else "None"
 
     prompt = f"""You are an AWS IAM security expert. Analyze this privilege escalation finding and provide actionable remediation.
@@ -428,18 +428,19 @@ Respond with EXACTLY this JSON structure (no markdown, no extra text):
 }}"""
 
     try:
-        client   = anthropic.Anthropic(api_key=api_key)
-        message  = client.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = message.content[0].text.strip()
-        # Parse the JSON response
+        genai.configure(api_key=api_key)
+        model  = genai.GenerativeModel("gemini-1.5-flash")
+        resp   = model.generate_content(prompt)
+        raw    = resp.text.strip()
+        # Strip markdown code fences if Gemini wraps the JSON
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
         result = json.loads(raw)
         return jsonify(result)
     except json.JSONDecodeError:
-        # Return raw text if JSON parse fails
         return jsonify({"explanation": raw, "remediation_steps": [], "iam_policy_fix": "", "terraform_snippet": ""})
     except Exception as e:
         log.exception("AI remediation call failed")
