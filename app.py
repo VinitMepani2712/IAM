@@ -430,7 +430,7 @@ Respond with EXACTLY this JSON structure (no markdown, no extra text):
     try:
         client = genai.Client(api_key=api_key)
         resp   = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-1.5-flash",
             contents=prompt,
         )
         raw    = resp.text.strip()
