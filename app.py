@@ -381,10 +381,7 @@ def ai_remediate():
     if not api_key:
         return jsonify({"error": "GEMINI_API_KEY not configured on this server."}), 503
 
-    try:
-        from google import genai
-    except ImportError:
-        return jsonify({"error": "google-genai package not installed."}), 503
+    import requests as _requests
 
     data       = request.get_json(silent=True) or {}
     principal  = data.get("principal", "Unknown")
@@ -428,12 +425,14 @@ Respond with EXACTLY this JSON structure (no markdown, no extra text):
 }}"""
 
     try:
-        client = genai.Client(api_key=api_key)
-        resp   = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=prompt,
-        )
-        raw    = resp.text.strip()
+        url  = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        body = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 1024},
+        }
+        resp = _requests.post(url, json=body, params={"key": api_key}, timeout=30)
+        resp.raise_for_status()
+        raw  = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
         # Strip markdown code fences if Gemini wraps the JSON
         if raw.startswith("```"):
             raw = raw.split("```")[1]
