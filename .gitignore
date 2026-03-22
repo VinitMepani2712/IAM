@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Secrets
+.env
+*.env
+
+# Database (ephemeral — never commit)
+iam_defender.db
+
+# Generated outputs
+*.pdf
+*.png
+iam_findings.json
+iam_risk_report.json
+
+# Large test data
+enterprise_iam_dump.json
+
+# IDE / OS
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# Build
+*.egg-info/
+dist/
+build/

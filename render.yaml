@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: iam-defender
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: IAM_SECRET_KEY
+        generateValue: true
+      - key: ANTHROPIC_API_KEY
+        sync: false           # you must paste this in the Render dashboard
+      - key: IAM_LOG_LEVEL
+        value: INFO
