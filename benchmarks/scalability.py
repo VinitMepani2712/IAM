@@ -1,8 +1,12 @@
 import time
 import matplotlib.pyplot as plt
-from core.entities import Principal
+from core.entities import Principal, PolicyStatement
 from graph.attack_graph import build_attack_graph
 from graph.reachability import find_minimal_escalation_path
+
+
+def _allow(actions: set) -> list:
+    return [PolicyStatement(effect="Allow", actions=actions, resources={"*"})]
 
 
 def generate_chain_environment(size):
@@ -12,33 +16,28 @@ def generate_chain_environment(size):
     """
     principals = {}
 
-    user = Principal(
+    principals["UserA"] = Principal(
         name="UserA",
         account_id="BenchmarkAccount",
         type="user",
-        allow_actions={"sts:AssumeRole"},
-        deny_actions=set(),
+        policy_statements=_allow({"sts:AssumeRole"}),
         trusts=set()
     )
-    principals["UserA"] = user
 
     previous = "UserA"
 
     for i in range(1, size + 1):
         role_name = f"Role{i}"
+        actions   = {"sts:AssumeRole"} if i < size else {"*"}
 
-        allow = {"sts:AssumeRole"} if i < size else {"AdministratorAccess"}
-
-        role = Principal(
+        principals[role_name] = Principal(
             name=role_name,
             account_id="BenchmarkAccount",
             type="role",
-            allow_actions=allow,
-            deny_actions=set(),
+            policy_statements=_allow(actions),
             trusts={previous}
         )
 
-        principals[role_name] = role
         previous = role_name
 
     return principals
@@ -46,7 +45,7 @@ def generate_chain_environment(size):
 
 def run_scalability_test(max_size=2000, step=200):
 
-    sizes = []
+    sizes    = []
     runtimes = []
 
     for size in range(step, max_size + 1, step):
@@ -54,21 +53,28 @@ def run_scalability_test(max_size=2000, step=200):
         principals = generate_chain_environment(size)
 
         start = time.time()
-
         graph = build_attack_graph(principals)
         find_minimal_escalation_path(graph, "UserA")
+        end   = time.time()
 
-        end = time.time()
-
+        elapsed = round(end - start, 4)
         sizes.append(size)
-        runtimes.append(end - start)
+        runtimes.append(elapsed)
 
-        print(f"Roles: {size} | Time: {round(end - start, 4)} sec")
+        print(f"Roles: {size:>5} | Time: {elapsed:.4f} sec")
 
     plt.figure(figsize=(8, 5))
-    plt.plot(sizes, runtimes, marker='o')
+    plt.plot(sizes, runtimes, marker="o")
     plt.xlabel("Number of Roles")
     plt.ylabel("Execution Time (seconds)")
     plt.title("IAM Attack Graph Scalability")
     plt.grid(True)
+    plt.tight_layout()
+    plt.savefig("scalability_results.png", dpi=150)
     plt.show()
+
+    return list(zip(sizes, runtimes))
+
+
+if __name__ == "__main__":
+    run_scalability_test()

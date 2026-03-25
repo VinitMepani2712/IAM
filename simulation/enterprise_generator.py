@@ -1,5 +1,5 @@
 import random
-from core.entities import Principal
+from core.entities import Principal, PolicyStatement
 
 ACTIONS = [
     "sts:AssumeRole",
@@ -9,6 +9,12 @@ ACTIONS = [
     "iam:CreateAccessKey",
     "ec2:RunInstances"
 ]
+
+
+def _allow(actions: set) -> list:
+    """Wrap a set of action strings into a single Allow PolicyStatement."""
+    return [PolicyStatement(effect="Allow", actions=actions, resources={"*"})]
+
 
 def generate_enterprise_environment(
     num_accounts=10,
@@ -32,8 +38,7 @@ def generate_enterprise_environment(
                 name=name,
                 account_id=account_id,
                 type="user",
-                allow_actions=set(random.sample(ACTIONS, 1)),
-                deny_actions=set(),
+                policy_statements=_allow(set(random.sample(ACTIONS, 1))),
                 trusts=set()
             )
 
@@ -44,8 +49,7 @@ def generate_enterprise_environment(
                 name=name,
                 account_id=account_id,
                 type="role",
-                allow_actions=set(random.sample(ACTIONS, 1)),
-                deny_actions=set(),
+                policy_statements=_allow(set(random.sample(ACTIONS, 1))),
                 trusts=set()
             )
 
@@ -56,8 +60,7 @@ def generate_enterprise_environment(
                 name=name,
                 account_id=account_id,
                 type="role",
-                allow_actions={"AdministratorAccess"},
-                deny_actions=set(),
+                policy_statements=_allow({"*"}),
                 trusts=set()
             )
 
@@ -81,7 +84,7 @@ def inject_escalation_chains(principals, num_accounts):
 
         account_id = f"Account{acc}"
 
-        user = f"{account_id}_User0"
+        user  = f"{account_id}_User0"
         role1 = f"{account_id}_Role0"
         role2 = f"{account_id}_Role1"
         admin = f"{account_id}_AdminRole0"

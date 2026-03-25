@@ -375,20 +375,54 @@ def build_attack_graph(principals: dict, scps: list = None, resource_policies: l
                     g.add_edge(a, _cap(cap_name))
 
     # ── Resource-based policy edges ───────────────────────────────────────────
-    # For Lambda resources: if principal P can invoke function F (via resource
-    # policy), and F has execution role R that is a known principal, add a
-    # virtual trust edge P → R so the escalation engine can traverse it.
     for rp in (resource_policies or []):
         exec_role_name = _role_name_from_arn(rp.execution_role or "") if rp.execution_role else None
+        allowed_lower  = {a.lower() for a in rp.allowed_actions}
+
+        # ── Lambda: invoke → execution role ───────────────────────────────────
+        # If principal P can invoke function F and F runs as role R, P can
+        # exfiltrate R's credentials or inject malicious code via UpdateFunctionCode.
         if rp.resource_type == "lambda" and exec_role_name and exec_role_name in principals:
             invoke_actions = {"lambda:invokefunction", "lambda:*", "*"}
-            if rp.allowed_actions & invoke_actions:
+            if allowed_lower & invoke_actions:
                 for p_arn in rp.allowed_principals:
                     caller = _role_name_from_arn(p_arn) or p_arn.split("/")[-1]
                     if caller in principals:
-                        # Add a virtual assume-role edge through a labelled action node
                         a = _anode(f"lambda:InvokeFunction({exec_role_name})")
                         g.add_edge(caller, a)
                         g.add_edge(a, exec_role_name)
+
+        # ── S3: cross-account read → DATA_READ capability ─────────────────────
+        # A principal granted s3:GetObject or s3:ListBucket via a bucket policy
+        # can exfiltrate data. Model as a direct DATA_READ capability edge.
+        elif rp.resource_type == "s3":
+            read_actions = {"s3:getobject", "s3:listbucket", "s3:*", "*"}
+            if allowed_lower & read_actions:
+                for p_arn in rp.allowed_principals:
+                    caller = _role_name_from_arn(p_arn) or p_arn.split("/")[-1]
+                    if caller in principals:
+                        a = _anode(f"s3:GetObject({rp.resource_arn})")
+                        g.add_edge(caller, a)
+                        g.add_edge(a, _cap("DATA_READ"))
+
+        # ── SQS: send/receive → DATA_READ or PRIVILEGE_PROPAGATION ────────────
+        # A principal that can send messages to a privileged queue (consumed by
+        # a Lambda or EC2 worker running as a powerful role) gains indirect code
+        # execution. Model as PRIVILEGE_PROPAGATION if exec_role is known,
+        # otherwise DATA_READ.
+        elif rp.resource_type == "sqs":
+            write_actions = {"sqs:sendmessage", "sqs:*", "*"}
+            if allowed_lower & write_actions:
+                for p_arn in rp.allowed_principals:
+                    caller = _role_name_from_arn(p_arn) or p_arn.split("/")[-1]
+                    if caller in principals:
+                        if exec_role_name and exec_role_name in principals:
+                            a = _anode(f"sqs:SendMessage({exec_role_name})")
+                            g.add_edge(caller, a)
+                            g.add_edge(a, exec_role_name)
+                        else:
+                            a = _anode(f"sqs:SendMessage({rp.resource_arn})")
+                            g.add_edge(caller, a)
+                            g.add_edge(a, _cap("PRIVILEGE_PROPAGATION"))
 
     return g

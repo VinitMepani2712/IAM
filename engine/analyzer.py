@@ -40,18 +40,28 @@ def analyze_environment_data(principals, scps=None):
 
     findings = []
 
+    # ── Pre-compute all escalation paths and global centrality in one pass ────
+    # Computing centrality inside the per-principal loop is O(n²).
+    # Instead, collect every path from every principal first, then compute
+    # centrality once globally so each node's score reflects its frequency
+    # across ALL attack paths — the more meaningful signal for remediation.
+    principal_paths: dict = {}
+    all_paths_flat:  list = []
+
+    for principal_name in principals:
+        paths = find_all_escalation_paths(graph, principal_name)
+        if paths:
+            principal_paths[principal_name] = paths
+            all_paths_flat.extend(paths)
+
+    global_centrality = compute_escalation_centrality(all_paths_flat)
+
     for principal_name, principal in principals.items():
 
-        paths = find_all_escalation_paths(graph, principal_name)
+        paths = principal_paths.get(principal_name)
         if not paths:
             continue
 
-        # Capabilities the principal directly holds WITHOUT needing combinations.
-        # We only skip FULL_ADMIN / ROLE_ASSUMPTION / PRIVILEGE_PROPAGATION
-        # because those are broad "already elevated" states.
-        # ACCESS_KEY_PERSISTENCE, CONSOLE_ACCESS, IDENTITY_CREATION, COMPUTE_LAUNCH,
-        # and POLICY_MODIFICATION are always reported — they represent concrete
-        # attack capabilities regardless of whether the principal "directly" has them.
         SKIP_IF_ALREADY_HELD = {"FULL_ADMIN", "ROLE_ASSUMPTION"}
         original_caps = set()
         for stmt in principal.policy_statements:
@@ -61,8 +71,7 @@ def analyze_environment_data(principals, scps=None):
                     if cap and cap in SKIP_IF_ALREADY_HELD:
                         original_caps.add(cap)
 
-        centrality = compute_escalation_centrality(paths)
-        centrality_score = centrality.get(principal_name, 0)
+        centrality_score = global_centrality.get(principal_name, 0)
 
         valid_paths = []
 
@@ -231,15 +240,15 @@ def analyze_environment_data(principals, scps=None):
     all_paths = [f["path"] for f in findings]
 
     if all_paths:
-        minimul_cut = compute_weighted_minimal_cut(all_paths)
+        minimal_cut = compute_weighted_minimal_cut(all_paths)
         dominators = compute_dominators(all_paths)
     else:
-        minimul_cut = []
+        minimal_cut = []
         dominators = {} 
     
     remediation_summary = {
         "total_paths": len(all_paths),
-        "recommended_fixes": minimul_cut,
+        "recommended_fixes": minimal_cut,
         "dominators": sorted(dominators) if dominators else []
     }
 
