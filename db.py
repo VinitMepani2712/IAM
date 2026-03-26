@@ -245,6 +245,7 @@ def list_suppressions() -> List[Dict[str, Any]]:
             ).fetchall()
         return [dict(r) for r in rows]
     except Exception:
+        log.warning("list_suppressions failed", exc_info=True)
         return []
 
 

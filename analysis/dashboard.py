@@ -1,3 +1,4 @@
+import json
 from collections import Counter
 from analysis.min_cut import compute_weighted_minimal_cut
 from analysis.dominator import compute_dominators
@@ -113,9 +114,9 @@ def generate_global_dashboard(principals, findings, criticality=None, output_fil
             new Chart(document.getElementById('severityChart'), {{
                 type: 'pie',
                 data: {{
-                    labels: {list(severity_counts.keys())},
+                    labels: {json.dumps(list(severity_counts.keys()))},
                     datasets: [{{
-                        data: {list(severity_counts.values())},
+                        data: {json.dumps(list(severity_counts.values()))},
                         backgroundColor: ['#ef4444','#f97316','#facc15','#22c55e']
                     }}]
                 }}
@@ -124,9 +125,9 @@ def generate_global_dashboard(principals, findings, criticality=None, output_fil
             new Chart(document.getElementById('patternChart'), {{
                 type: 'bar',
                 data: {{
-                    labels: {list(pattern_counts.keys())},
+                    labels: {json.dumps(list(pattern_counts.keys()))},
                     datasets: [{{
-                        data: {list(pattern_counts.values())},
+                        data: {json.dumps(list(pattern_counts.values()))},
                         backgroundColor: '#38bdf8'
                     }}]
                 }}

@@ -16,7 +16,10 @@ from pdf.pdf_report import generate_pdf_report
 import db
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("IAM_SECRET_KEY", "iam-defender-dev-key-change-in-prod")
+_secret_key = os.environ.get("IAM_SECRET_KEY", "iam-defender-dev-key-change-in-prod")
+if _secret_key == "iam-defender-dev-key-change-in-prod":
+    log.warning("IAM_SECRET_KEY is not set — using insecure default. Set this env var before deploying.")
+app.secret_key = _secret_key
 
 
 @app.route("/")

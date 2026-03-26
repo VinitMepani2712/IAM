@@ -12,16 +12,15 @@ class AttackGraph:
     def add_node(self, node):
         self.nodes.add(node)
         if node not in self.adjacency_list:
-            self.adjacency_list[node] = []
+            self.adjacency_list[node] = set()
 
     def add_edge(self, from_node, to_node):
         self.add_node(from_node)
         self.add_node(to_node)
-        if to_node not in self.adjacency_list[from_node]:  # prevent duplicate edges
-            self.adjacency_list[from_node].append(to_node)
+        self.adjacency_list[from_node].add(to_node)
 
     def neighbors(self, node):
-        return self.adjacency_list.get(node, [])
+        return list(self.adjacency_list.get(node, set()))
 
     adjacency = property(lambda self: self.adjacency_list)
 
@@ -96,11 +95,11 @@ def _has_action(actions: set, prefix: str) -> bool:
     return False
 
 
-def _cap(name: str):
+def _capability_node(name: str):
     return f"CAPABILITY::{name}"
 
 
-def _anode(action: str, target: str = None):
+def _action_node(action: str, target: str = None):
     return f"ACTION::{action}::{target}" if target else f"ACTION::{action}"
 
 
@@ -136,7 +135,7 @@ def build_attack_graph(principals: dict, scps: list = None, resource_policies: l
         allowed = role_trust_allows.get(target_role, set())
         if allowed and caller not in allowed:
             return
-        action_node = _anode("sts:AssumeRole", target_role)
+        action_node = _action_node("sts:AssumeRole", target_role)
         g.add_edge(caller, action_node)
         g.add_edge(action_node, target_role)
 
@@ -205,7 +204,7 @@ def build_attack_graph(principals: dict, scps: list = None, resource_policies: l
 
     for name, p in principals.items():
         for stmt in getattr(p, "policy_statements", []) or []:
-            if getattr(stmt, "effect", "Deny") != "Allow":
+            if getattr(stmt, "effect", None) != "Allow":
                 continue
 
             actions   = _actions(stmt)
@@ -242,93 +241,93 @@ def build_attack_graph(principals: dict, scps: list = None, resource_policies: l
             if (passrole_broad and _has_action(actions, "ec2:RunInstances")
                     and not _is_denied(name, "iam:PassRole", "*")
                     and not _is_denied(name, "ec2:RunInstances", "*")):
-                a = _anode("iam:PassRole+ec2:RunInstances")
+                a = _action_node("iam:PassRole+ec2:RunInstances")
                 g.add_edge(name, a)
-                g.add_edge(a, _cap("COMPUTE_LAUNCH"))
+                g.add_edge(a, _capability_node("COMPUTE_LAUNCH"))
 
             # ── PassRole + Lambda (create) ────────────────────────────────────
             if (passrole_broad and _has_action(actions, "lambda:CreateFunction")
                     and not _is_denied(name, "iam:PassRole", "*")
                     and not _is_denied(name, "lambda:CreateFunction", "*")):
-                a = _anode("iam:PassRole+lambda:CreateFunction")
+                a = _action_node("iam:PassRole+lambda:CreateFunction")
                 g.add_edge(name, a)
-                g.add_edge(a, _cap("COMPUTE_LAUNCH"))
+                g.add_edge(a, _capability_node("COMPUTE_LAUNCH"))
 
             # ── Lambda UpdateFunctionCode ─────────────────────────────────────
             # Can overwrite existing Lambda code without needing PassRole —
             # if the Lambda's execution role is powerful, this is escalation.
             if (_has_action(actions, "lambda:UpdateFunctionCode")
                     and not _is_denied(name, "lambda:UpdateFunctionCode", "*")):
-                a = _anode("lambda:UpdateFunctionCode")
+                a = _action_node("lambda:UpdateFunctionCode")
                 g.add_edge(name, a)
-                g.add_edge(a, _cap("COMPUTE_LAUNCH"))
+                g.add_edge(a, _capability_node("COMPUTE_LAUNCH"))
 
             # ── PassRole + Glue ───────────────────────────────────────────────
             if (passrole_broad and _has_action(actions, "glue:CreateJob")
                     and not _is_denied(name, "iam:PassRole", "*")
                     and not _is_denied(name, "glue:CreateJob", "*")):
-                a = _anode("iam:PassRole+glue:CreateJob")
+                a = _action_node("iam:PassRole+glue:CreateJob")
                 g.add_edge(name, a)
-                g.add_edge(a, _cap("COMPUTE_LAUNCH"))
+                g.add_edge(a, _capability_node("COMPUTE_LAUNCH"))
 
             # ── PassRole + CloudFormation ─────────────────────────────────────
             if (passrole_broad and _has_action(actions, "cloudformation:CreateStack")
                     and not _is_denied(name, "iam:PassRole", "*")
                     and not _is_denied(name, "cloudformation:CreateStack", "*")):
-                a = _anode("iam:PassRole+cloudformation:CreateStack")
+                a = _action_node("iam:PassRole+cloudformation:CreateStack")
                 g.add_edge(name, a)
-                g.add_edge(a, _cap("COMPUTE_LAUNCH"))
+                g.add_edge(a, _capability_node("COMPUTE_LAUNCH"))
 
             # ── PassRole + ECS ────────────────────────────────────────────────
             if (passrole_broad and _has_action(actions, "ecs:RunTask")
                     and not _is_denied(name, "iam:PassRole", "*")
                     and not _is_denied(name, "ecs:RunTask", "*")):
-                a = _anode("iam:PassRole+ecs:RunTask")
+                a = _action_node("iam:PassRole+ecs:RunTask")
                 g.add_edge(name, a)
-                g.add_edge(a, _cap("COMPUTE_LAUNCH"))
+                g.add_edge(a, _capability_node("COMPUTE_LAUNCH"))
 
             # ── PassRole + SageMaker ──────────────────────────────────────────
             if (passrole_broad and _has_action(actions, "sagemaker:CreateTrainingJob")
                     and not _is_denied(name, "iam:PassRole", "*")
                     and not _is_denied(name, "sagemaker:CreateTrainingJob", "*")):
-                a = _anode("iam:PassRole+sagemaker:CreateTrainingJob")
+                a = _action_node("iam:PassRole+sagemaker:CreateTrainingJob")
                 g.add_edge(name, a)
-                g.add_edge(a, _cap("COMPUTE_LAUNCH"))
+                g.add_edge(a, _capability_node("COMPUTE_LAUNCH"))
 
             # ── Policy modification (role) ────────────────────────────────────
             for pol_action in ["iam:AttachRolePolicy", "iam:PutRolePolicy",
                                 "iam:CreatePolicyVersion", "iam:SetDefaultPolicyVersion"]:
                 if _has_action(actions, pol_action) and not _is_denied(name, pol_action, "*"):
-                    a = _anode(pol_action)
+                    a = _action_node(pol_action)
                     g.add_edge(name, a)
-                    g.add_edge(a, _cap("POLICY_MODIFICATION"))
+                    g.add_edge(a, _capability_node("POLICY_MODIFICATION"))
 
             # ── Policy modification (user) ────────────────────────────────────
             for pol_action in ["iam:AttachUserPolicy", "iam:PutUserPolicy"]:
                 if _has_action(actions, pol_action) and not _is_denied(name, pol_action, "*"):
-                    a = _anode(pol_action)
+                    a = _action_node(pol_action)
                     g.add_edge(name, a)
-                    g.add_edge(a, _cap("POLICY_MODIFICATION"))
+                    g.add_edge(a, _capability_node("POLICY_MODIFICATION"))
 
             # ── Access key persistence ────────────────────────────────────────
             if _has_action(actions, "iam:CreateAccessKey") and not _is_denied(name, "iam:CreateAccessKey", "*"):
-                a = _anode("iam:CreateAccessKey")
+                a = _action_node("iam:CreateAccessKey")
                 g.add_edge(name, a)
-                g.add_edge(a, _cap("ACCESS_KEY_PERSISTENCE"))
+                g.add_edge(a, _capability_node("ACCESS_KEY_PERSISTENCE"))
 
             # ── Console access takeover ───────────────────────────────────────
             for login_action in ["iam:CreateLoginProfile", "iam:UpdateLoginProfile"]:
                 if _has_action(actions, login_action) and not _is_denied(name, login_action, "*"):
-                    a = _anode(login_action)
+                    a = _action_node(login_action)
                     g.add_edge(name, a)
-                    g.add_edge(a, _cap("CONSOLE_ACCESS"))
+                    g.add_edge(a, _capability_node("CONSOLE_ACCESS"))
 
             # ── Identity creation ─────────────────────────────────────────────
             for id_action in ["iam:CreateUser", "iam:CreateRole"]:
                 if _has_action(actions, id_action) and not _is_denied(name, id_action, "*"):
-                    a = _anode(id_action)
+                    a = _action_node(id_action)
                     g.add_edge(name, a)
-                    g.add_edge(a, _cap("IDENTITY_CREATION"))
+                    g.add_edge(a, _capability_node("IDENTITY_CREATION"))
 
             # ── Privilege propagation via group / trust manipulation ──────────
             for priv_action in [
@@ -338,9 +337,9 @@ def build_attack_graph(principals: dict, scps: list = None, resource_policies: l
                 "iam:DeleteUserPermissionsBoundary",
             ]:
                 if _has_action(actions, priv_action) and not _is_denied(name, priv_action, "*"):
-                    a = _anode(priv_action)
+                    a = _action_node(priv_action)
                     g.add_edge(name, a)
-                    g.add_edge(a, _cap("PRIVILEGE_PROPAGATION"))
+                    g.add_edge(a, _capability_node("PRIVILEGE_PROPAGATION"))
 
             # ── Wildcard IAM / full admin ─────────────────────────────────────
             is_full_wildcard = "*" in actions and not _is_denied(name, "*", "*")
@@ -348,15 +347,15 @@ def build_attack_graph(principals: dict, scps: list = None, resource_policies: l
 
             if is_full_wildcard:
                 # Allow * on * = AdministratorAccess equivalent
-                g.add_edge(name, _cap("FULL_ADMIN"))
-                g.add_edge(name, _cap("PRIVILEGE_PROPAGATION"))
-                g.add_edge(name, _cap("CONSOLE_ACCESS"))
-                g.add_edge(name, _cap("ACCESS_KEY_PERSISTENCE"))
+                g.add_edge(name, _capability_node("FULL_ADMIN"))
+                g.add_edge(name, _capability_node("PRIVILEGE_PROPAGATION"))
+                g.add_edge(name, _capability_node("CONSOLE_ACCESS"))
+                g.add_edge(name, _capability_node("ACCESS_KEY_PERSISTENCE"))
 
             elif is_iam_wildcard:
-                g.add_edge(name, _cap("PRIVILEGE_PROPAGATION"))
-                g.add_edge(name, _cap("CONSOLE_ACCESS"))
-                g.add_edge(name, _cap("ACCESS_KEY_PERSISTENCE"))
+                g.add_edge(name, _capability_node("PRIVILEGE_PROPAGATION"))
+                g.add_edge(name, _capability_node("CONSOLE_ACCESS"))
+                g.add_edge(name, _capability_node("ACCESS_KEY_PERSISTENCE"))
 
             # ── Low-impact read / recon capabilities ──────────────────────────
             for read_action, cap_name in [
@@ -370,9 +369,9 @@ def build_attack_graph(principals: dict, scps: list = None, resource_policies: l
                 ("iam:SimulatePrincipalPolicy",  "RECON"),
             ]:
                 if _has_action(actions, read_action) and not _is_denied(name, read_action, "*"):
-                    a = _anode(read_action)
+                    a = _action_node(read_action)
                     g.add_edge(name, a)
-                    g.add_edge(a, _cap(cap_name))
+                    g.add_edge(a, _capability_node(cap_name))
 
     # ── Resource-based policy edges ───────────────────────────────────────────
     for rp in (resource_policies or []):
@@ -388,7 +387,7 @@ def build_attack_graph(principals: dict, scps: list = None, resource_policies: l
                 for p_arn in rp.allowed_principals:
                     caller = _role_name_from_arn(p_arn) or p_arn.split("/")[-1]
                     if caller in principals:
-                        a = _anode(f"lambda:InvokeFunction({exec_role_name})")
+                        a = _action_node(f"lambda:InvokeFunction({exec_role_name})")
                         g.add_edge(caller, a)
                         g.add_edge(a, exec_role_name)
 
@@ -401,9 +400,9 @@ def build_attack_graph(principals: dict, scps: list = None, resource_policies: l
                 for p_arn in rp.allowed_principals:
                     caller = _role_name_from_arn(p_arn) or p_arn.split("/")[-1]
                     if caller in principals:
-                        a = _anode(f"s3:GetObject({rp.resource_arn})")
+                        a = _action_node(f"s3:GetObject({rp.resource_arn})")
                         g.add_edge(caller, a)
-                        g.add_edge(a, _cap("DATA_READ"))
+                        g.add_edge(a, _capability_node("DATA_READ"))
 
         # ── SQS: send/receive → DATA_READ or PRIVILEGE_PROPAGATION ────────────
         # A principal that can send messages to a privileged queue (consumed by
@@ -417,12 +416,12 @@ def build_attack_graph(principals: dict, scps: list = None, resource_policies: l
                     caller = _role_name_from_arn(p_arn) or p_arn.split("/")[-1]
                     if caller in principals:
                         if exec_role_name and exec_role_name in principals:
-                            a = _anode(f"sqs:SendMessage({exec_role_name})")
+                            a = _action_node(f"sqs:SendMessage({exec_role_name})")
                             g.add_edge(caller, a)
                             g.add_edge(a, exec_role_name)
                         else:
-                            a = _anode(f"sqs:SendMessage({rp.resource_arn})")
+                            a = _action_node(f"sqs:SendMessage({rp.resource_arn})")
                             g.add_edge(caller, a)
-                            g.add_edge(a, _cap("PRIVILEGE_PROPAGATION"))
+                            g.add_edge(a, _capability_node("PRIVILEGE_PROPAGATION"))
 
     return g

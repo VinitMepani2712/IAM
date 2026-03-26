@@ -71,11 +71,10 @@ def analyze_environment_data(principals, scps=None):
                     if cap and cap in SKIP_IF_ALREADY_HELD:
                         original_caps.add(cap)
 
-        # Use per-principal centrality for risk scoring: principal appears in
-        # 100% of its own paths, giving the correct high-frequency signal.
-        # Global centrality is reserved for cross-environment remediation ranking.
-        local_centrality = compute_escalation_centrality(paths)
-        centrality_score = local_centrality.get(principal_name, 0)
+        # Use global centrality for risk scoring: reflects how frequently this
+        # principal appears across ALL escalation paths in the environment.
+        # This differentiates high-value pivot points from isolated principals.
+        centrality_score = global_centrality.get(principal_name, 0)
 
         valid_paths = []
 
