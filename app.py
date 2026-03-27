@@ -11,6 +11,13 @@ from werkzeug.utils import secure_filename
 from logging_config import setup_logging
 setup_logging()
 
+# Load .env file if present (local development convenience)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed — rely on shell environment
+
 log = logging.getLogger(__name__)
 
 from cloud.aws.parser import parse_aws_iam_json

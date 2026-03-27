@@ -3,6 +3,7 @@
 
 # Web server
 flask==3.0.3
+python-dotenv==1.0.1   # auto-loads .env for local development
 # gunicorn==22.0.0  # Linux/production only — omit on Windows
 
 # PDF report generation
