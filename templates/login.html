@@ -3,142 +3,431 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IAM Defender — Login</title>
+  <title>IAM Defender — Sign In</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --blue:    #3b82f6;
+      --blue-d:  #1d4ed8;
+      --green:   #10b981;
+      --red:     #ef4444;
+      --bg:      #060d1a;
+      --panel:   #0b1528;
+      --card:    #111e35;
+      --border:  rgba(59,130,246,0.18);
+      --text:    #f1f5f9;
+      --muted:   #64748b;
+      --mono:    "Consolas", "Fira Code", monospace;
+    }
+
+    html, body { height: 100%; }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0f172a;
-      min-height: 100vh;
+      background: var(--bg);
       display: flex;
-      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Left branding panel ─────────────────────────────────────────────── */
+    .panel-left {
+      flex: 1;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
       justify-content: center;
+      padding: 4rem 3.5rem;
+      position: relative;
+      overflow: hidden;
     }
 
-    .card {
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 2.5rem 2rem;
-      width: 100%;
-      max-width: 380px;
+    /* Animated grid background */
+    .panel-left::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(59,130,246,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,130,246,0.06) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
+      animation: gridDrift 20s linear infinite;
     }
 
-    .logo {
-      text-align: center;
+    @keyframes gridDrift {
+      0%   { background-position: 0 0; }
+      100% { background-position: 40px 40px; }
+    }
+
+    /* Glowing orb */
+    .panel-left::after {
+      content: '';
+      position: absolute;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(59,130,246,0.12) 0%, transparent 70%);
+      top: -100px; left: -100px;
+      border-radius: 50%;
+      animation: pulse 6s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1);   opacity: 0.6; }
+      50%       { transform: scale(1.1); opacity: 1; }
+    }
+
+    .brand-wrap { position: relative; z-index: 1; }
+
+    .shield-icon {
+      width: 64px; height: 64px;
+      background: linear-gradient(135deg, rgba(59,130,246,0.2), rgba(16,185,129,0.1));
+      border: 1.5px solid rgba(59,130,246,0.4);
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
       margin-bottom: 1.8rem;
+      box-shadow: 0 0 32px rgba(59,130,246,0.25), inset 0 1px 0 rgba(255,255,255,0.06);
     }
-    .logo h1 {
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: #f8fafc;
-      letter-spacing: -0.3px;
-    }
-    .logo p {
-      font-size: 0.8rem;
-      color: #64748b;
-      margin-top: 4px;
-    }
-    .badge {
-      display: inline-block;
-      background: #3b82f6;
-      color: #fff;
+    .shield-icon svg { filter: drop-shadow(0 0 8px rgba(59,130,246,0.6)); }
+
+    .brand-tag {
       font-size: 0.65rem;
       font-weight: 700;
-      letter-spacing: 1px;
-      padding: 2px 8px;
-      border-radius: 4px;
-      margin-bottom: 0.5rem;
+      letter-spacing: 2px;
       text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 0.75rem;
+      display: flex; align-items: center; gap: 8px;
     }
+    .brand-tag::before {
+      content: '';
+      display: inline-block;
+      width: 20px; height: 1.5px;
+      background: var(--blue);
+    }
+
+    .brand-title {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.15;
+      letter-spacing: -0.5px;
+      margin-bottom: 0.9rem;
+    }
+    .brand-title span { color: var(--blue); }
+
+    .brand-desc {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.6;
+      max-width: 380px;
+      margin-bottom: 2.5rem;
+    }
+
+    /* Feature pills */
+    .features { display: flex; flex-direction: column; gap: 0.75rem; }
+
+    .feat {
+      display: flex; align-items: center; gap: 12px;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 10px;
+      padding: 0.7rem 1rem;
+      max-width: 380px;
+      transition: border-color 0.2s;
+    }
+    .feat:hover { border-color: rgba(59,130,246,0.3); }
+
+    .feat-icon {
+      width: 32px; height: 32px; flex-shrink: 0;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.95rem;
+    }
+    .feat-icon.blue  { background: rgba(59,130,246,0.15); }
+    .feat-icon.green { background: rgba(16,185,129,0.15); }
+    .feat-icon.red   { background: rgba(239,68,68,0.15); }
+    .feat-icon.amber { background: rgba(245,158,11,0.15); }
+
+    .feat-text { font-size: 0.82rem; color: #cbd5e1; line-height: 1.35; }
+    .feat-text strong { color: var(--text); font-weight: 600; display: block; }
+
+    /* Bottom stat bar */
+    .stat-bar {
+      display: flex; gap: 2rem;
+      margin-top: 2.8rem;
+      padding-top: 1.8rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .stat-item { text-align: left; }
+    .stat-num {
+      font-size: 1.35rem; font-weight: 800;
+      color: var(--blue); font-family: var(--mono);
+      letter-spacing: -1px;
+    }
+    .stat-label { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+
+    /* ── Right login form ────────────────────────────────────────────────── */
+    .panel-right {
+      width: 440px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 3rem 3rem;
+      background: var(--bg);
+    }
+
+    .form-header { margin-bottom: 2rem; }
+    .form-header h2 {
+      font-size: 1.55rem; font-weight: 800;
+      color: var(--text); letter-spacing: -0.4px;
+      margin-bottom: 0.4rem;
+    }
+    .form-header p { font-size: 0.85rem; color: var(--muted); }
+
+    .error-box {
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.35);
+      border-radius: 8px;
+      padding: 0.65rem 0.9rem;
+      margin-bottom: 1.25rem;
+      font-size: 0.83rem; color: #fca5a5;
+    }
+    .error-box svg { flex-shrink: 0; }
+
+    .field { margin-bottom: 1.1rem; }
 
     label {
       display: block;
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: #94a3b8;
-      margin-bottom: 0.35rem;
-      letter-spacing: 0.3px;
+      font-size: 0.78rem; font-weight: 600;
+      color: #94a3b8; letter-spacing: 0.4px;
+      text-transform: uppercase;
+      margin-bottom: 0.4rem;
+    }
+
+    .input-wrap { position: relative; }
+
+    .input-wrap svg {
+      position: absolute; left: 12px; top: 50%;
+      transform: translateY(-50%);
+      width: 16px; height: 16px;
+      color: var(--muted); pointer-events: none;
+      transition: color 0.15s;
     }
 
     input[type="text"],
     input[type="password"] {
       width: 100%;
-      background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 7px;
-      color: #f1f5f9;
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 9px;
+      color: var(--text);
       font-size: 0.9rem;
-      padding: 0.6rem 0.85rem;
+      padding: 0.7rem 0.85rem 0.7rem 2.5rem;
       outline: none;
-      transition: border-color 0.15s;
-      margin-bottom: 1rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
     input:focus {
-      border-color: #3b82f6;
+      border-color: rgba(59,130,246,0.6);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
     }
+    input:focus + svg, .input-wrap:focus-within svg { color: var(--blue); }
 
     button[type="submit"] {
       width: 100%;
-      background: #3b82f6;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
       color: #fff;
-      border: none;
-      border-radius: 7px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      padding: 0.65rem;
+      border: none; border-radius: 9px;
+      font-size: 0.9rem; font-weight: 700;
+      padding: 0.75rem;
       cursor: pointer;
-      transition: background 0.15s;
-      margin-top: 0.25rem;
+      margin-top: 0.5rem;
+      letter-spacing: 0.2px;
+      box-shadow: 0 4px 20px rgba(37,99,235,0.35);
+      transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
     }
-    button:hover { background: #2563eb; }
-
-    .error {
-      background: #450a0a;
-      border: 1px solid #ef4444;
-      color: #fca5a5;
-      border-radius: 6px;
-      font-size: 0.82rem;
-      padding: 0.55rem 0.85rem;
-      margin-bottom: 1rem;
+    button[type="submit"]:hover {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      box-shadow: 0 6px 28px rgba(59,130,246,0.45);
+      transform: translateY(-1px);
     }
+    button[type="submit"]:active { transform: translateY(0); }
 
-    .footer {
-      text-align: center;
+    .form-footer {
+      margin-top: 1.8rem;
+      padding-top: 1.4rem;
+      border-top: 1px solid rgba(255,255,255,0.05);
       font-size: 0.72rem;
-      color: #475569;
-      margin-top: 1.6rem;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.7;
+    }
+    .form-footer code {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 0.7rem;
+      color: #93c5fd;
+      font-family: var(--mono);
+    }
+
+    /* Responsive: stack on small screens */
+    @media (max-width: 800px) {
+      body { flex-direction: column; overflow: auto; }
+      .panel-left { display: none; }
+      .panel-right { width: 100%; padding: 2.5rem 1.5rem; justify-content: center; min-height: 100vh; }
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="logo">
-      <div class="badge">IAM Defender</div>
-      <h1>Sign in</h1>
-      <p>Privilege Escalation Detection Engine</p>
+
+  <!-- ── Left branding panel ─────────────────────────────────────────────── -->
+  <div class="panel-left">
+    <div class="brand-wrap">
+
+      <div class="shield-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="none"
+             viewBox="0 0 24 24" stroke-width="1.8" stroke="#3b82f6">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6
+               11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623
+               5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152
+               c-3.196 0-6.1-1.248-8.25-3.285z"/>
+        </svg>
+      </div>
+
+      <div class="brand-tag">Security Intelligence Platform</div>
+
+      <h1 class="brand-title">IAM <span>Defender</span><br>Attack Surface Engine</h1>
+
+      <p class="brand-desc">
+        Detects multi-hop privilege escalation paths that individual policy
+        scanners miss — using graph-based analysis of IAM trust relationships,
+        policy chains, and cross-account pivots.
+      </p>
+
+      <div class="features">
+        <div class="feat">
+          <div class="feat-icon blue">🔗</div>
+          <div class="feat-text">
+            <strong>Multi-hop Path Detection</strong>
+            Finds chained escalation routes across roles, policies and accounts
+          </div>
+        </div>
+        <div class="feat">
+          <div class="feat-icon red">⚡</div>
+          <div class="feat-text">
+            <strong>Attack Simulation</strong>
+            Animates live escalation paths with step-by-step breach replay
+          </div>
+        </div>
+        <div class="feat">
+          <div class="feat-icon green">🛡</div>
+          <div class="feat-text">
+            <strong>Minimal Cut Remediation</strong>
+            Identifies the smallest set of changes that eliminates all paths
+          </div>
+        </div>
+        <div class="feat">
+          <div class="feat-icon amber">🤖</div>
+          <div class="feat-text">
+            <strong>AI-powered Fix Generation</strong>
+            Gemini-backed IAM policy and Terraform fix suggestions per finding
+          </div>
+        </div>
+      </div>
+
+      <div class="stat-bar">
+        <div class="stat-item">
+          <div class="stat-num">30+</div>
+          <div class="stat-label">Escalation vectors</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">MITRE</div>
+          <div class="stat-label">ATT&amp;CK mapped</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">O(V+E)</div>
+          <div class="stat-label">Graph complexity</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Right login form ───────────────────────────────────────────────── -->
+  <div class="panel-right">
+
+    <div class="form-header">
+      <h2>Welcome back</h2>
+      <p>Sign in to access your IAM analysis workspace</p>
     </div>
 
     {% if error %}
-    <div class="error">{{ error }}</div>
+    <div class="error-box">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none"
+           viewBox="0 0 24 24" stroke-width="2" stroke="#ef4444">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/>
+      </svg>
+      {{ error }}
+    </div>
     {% endif %}
 
     <form method="POST" action="/login">
-      <label for="username">Username</label>
-      <input type="text" id="username" name="username"
-             autocomplete="username" autofocus required>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-      <label for="password">Password</label>
-      <input type="password" id="password" name="password"
-             autocomplete="current-password" required>
+      <div class="field">
+        <label for="username">Username</label>
+        <div class="input-wrap">
+          <input type="text" id="username" name="username"
+                 autocomplete="username" autofocus required
+                 placeholder="admin">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+               stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/>
+          </svg>
+        </div>
+      </div>
 
-      <button type="submit">Sign in</button>
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="input-wrap">
+          <input type="password" id="password" name="password"
+                 autocomplete="current-password" required
+                 placeholder="••••••••">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+               stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0
+                 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0
+                 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/>
+          </svg>
+        </div>
+      </div>
+
+      <button type="submit">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none"
+             viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25
+               2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/>
+        </svg>
+        Sign in
+      </button>
     </form>
 
-    <div class="footer">
-      Set credentials via <code>IAM_ADMIN_USER</code> / <code>IAM_ADMIN_PASSWORD</code> env vars
+    <div class="form-footer">
+      Credentials set via <code>IAM_ADMIN_USER</code> &amp; <code>IAM_ADMIN_PASSWORD</code><br>
+      in your <code>.env</code> file
     </div>
+
   </div>
+
 </body>
 </html>
