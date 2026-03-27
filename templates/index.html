@@ -91,6 +91,7 @@
                 <div class="card-desc">aws iam get-account-authorization-details --output json</div>
 
                 <form action="/analyze" method="post" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="drop-zone" id="dropZone">
                         <div class="drop-icon-wrap">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none"

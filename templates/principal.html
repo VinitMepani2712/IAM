@@ -149,7 +149,7 @@
 
             {% if note.get('note') %}
             <div style="margin-top:8px;font-size:0.75rem;color:#64748b;border-top:1px solid #1e293b;padding-top:8px;">
-                📝 {{ note.note }}
+                📝 {{ note.note | e }}
             </div>
             {% endif %}
         </div>

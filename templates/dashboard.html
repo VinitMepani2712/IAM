@@ -6,9 +6,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IAM Risk Intelligence Dashboard</title>
 
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
     <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <script src="https://unpkg.com/feather-icons"></script>
+    <script>
+        // Attach CSRF token to all fetch() calls automatically
+        const _csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        const _origFetch = window.fetch;
+        window.fetch = function(url, opts = {}) {
+            if (/^(POST|PUT|PATCH|DELETE)$/i.test(opts.method || 'GET')) {
+                opts.headers = Object.assign({ 'X-CSRF-Token': _csrfToken }, opts.headers || {});
+            }
+            return _origFetch(url, opts);
+        };
+    </script>
 
     <script id="top-critical-data" type="application/json">
         {{ (top_critical_ids or []) | tojson }}

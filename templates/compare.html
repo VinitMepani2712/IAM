@@ -77,7 +77,7 @@
     <div class="compare-header">
         <div class="scan-card">
             <h3>Baseline (Scan #{{ scan_a.id }})</h3>
-            <div class="filename">{{ scan_a.filename }}</div>
+            <div class="filename">{{ scan_a.filename | e }}</div>
             <div class="meta">{{ scan_a.created_at }} &nbsp;·&nbsp; {{ scan_a.total_principals }} principals</div>
             <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
                 <span class="severity-pill severity-critical">{{ scan_a.critical }} Critical</span>
@@ -89,7 +89,7 @@
         <div class="vs-badge">VS</div>
         <div class="scan-card">
             <h3>New Scan (Scan #{{ scan_b.id }})</h3>
-            <div class="filename">{{ scan_b.filename }}</div>
+            <div class="filename">{{ scan_b.filename | e }}</div>
             <div class="meta">{{ scan_b.created_at }} &nbsp;·&nbsp; {{ scan_b.total_principals }} principals</div>
             <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
                 <span class="severity-pill severity-critical">{{ scan_b.critical }} Critical</span>
