@@ -640,6 +640,17 @@ def add_security_headers(response):
     return response
 
 
+# ── Health check (no auth required — used by Render / load balancers) ─────────
+@app.route("/health")
+def health():
+    try:
+        db.list_scans()  # confirm DB is reachable
+        return jsonify({"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}), 200
+    except Exception as exc:
+        log.error("Health check failed: %s", exc)
+        return jsonify({"status": "error", "detail": "database unavailable"}), 503
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 db.init_db()
