@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, Response, session, jsonify, redirect, url_for, abort
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import functools
 import json
 import logging
@@ -36,6 +38,14 @@ if not _secret_key:
 
 app = Flask(__name__)
 app.secret_key = _secret_key
+
+# ── Rate limiting ─────────────────────────────────────────────────────────────
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=[],          # no global limit — apply per-route only
+    storage_uri="memory://",    # in-process store (sufficient for single-worker)
+)
 
 # ── M2: Session security flags ────────────────────────────────────────────────
 app.config["SESSION_COOKIE_HTTPONLY"]  = True
@@ -107,6 +117,7 @@ def _validate_reason(reason: str) -> str:
 
 # ── C1: Login / logout ───────────────────────────────────────────────────────
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute; 30 per hour")
 def login():
     if session.get("authenticated"):
         return redirect("/")
@@ -141,6 +152,7 @@ def index():
 @app.route("/analyze", methods=["POST"])
 @require_auth
 @csrf_protect
+@limiter.limit("20 per hour")
 def analyze():
 
     if "file" not in request.files or request.files["file"].filename == "":
@@ -543,6 +555,7 @@ def trend_data():
 @app.route("/api/remediate", methods=["POST"])
 @require_auth
 @csrf_protect
+@limiter.limit("30 per hour")
 def ai_remediate():
     """
     Call Gemini to generate plain-English explanation + remediation for a finding.
