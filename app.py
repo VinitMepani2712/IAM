@@ -1,6 +1,4 @@
 from flask import Flask, render_template, request, Response, session, jsonify, redirect, url_for, abort
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 import functools
 import json
@@ -40,22 +38,13 @@ if not _secret_key:
 app = Flask(__name__)
 app.secret_key = _secret_key
 
-# ── Rate limiting ─────────────────────────────────────────────────────────────
-limiter = Limiter(
-    key_func=get_remote_address,
-    app=app,
-    default_limits=[],          # no global limit — apply per-route only
-    storage_uri="memory://",    # in-process store (sufficient for single-worker)
-)
-
 # ── M2: Session security flags ────────────────────────────────────────────────
 app.config["SESSION_COOKIE_HTTPONLY"]  = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Strict"   # primary CSRF defense
 app.config["SESSION_COOKIE_SECURE"]   = os.environ.get("IAM_HTTPS", "0") == "1"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
 
-# ── H1: File upload size limit (10 MB) ───────────────────────────────────────
-app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
+# No MAX_CONTENT_LENGTH — real AWS IAM exports can be large
 
 # ── L3: Accepted top-level keys for IAM JSON uploads ─────────────────────────
 _IAM_TOP_LEVEL_KEYS = {
@@ -117,7 +106,6 @@ def _validate_reason(reason: str) -> str:
 
 # ── C1: Login / register / logout ────────────────────────────────────────────
 @app.route("/login", methods=["GET", "POST"])
-@limiter.limit("10 per minute; 30 per hour")
 def login():
     if session.get("user_id"):
         return redirect("/")
@@ -138,7 +126,6 @@ def login():
 
 
 @app.route("/register", methods=["GET", "POST"])
-@limiter.limit("5 per hour")
 def register():
     if session.get("user_id"):
         return redirect("/")
@@ -180,7 +167,6 @@ def index():
 
 @app.route("/analyze", methods=["POST"])
 @csrf_protect
-@limiter.limit("20 per hour")
 def analyze():
 
     if "file" not in request.files or request.files["file"].filename == "":
@@ -581,7 +567,6 @@ def trend_data():
 @app.route("/api/remediate", methods=["POST"])
 @require_auth
 @csrf_protect
-@limiter.limit("30 per hour")
 def ai_remediate():
     """
     Call Gemini to generate plain-English explanation + remediation for a finding.
