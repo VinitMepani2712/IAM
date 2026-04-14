@@ -6,7 +6,8 @@ Stores scan history so results survive server restarts and can be
 retrieved by scan ID without relying on Flask session alone.
 
 Tables:
-    scans          — one row per uploaded file analysis
+    users          — registered user accounts
+    scans          — one row per uploaded file analysis (linked to user)
     scan_findings  — serialised findings list per scan
     scan_remediation — serialised remediation dict per scan
 """
@@ -33,6 +34,13 @@ def init_db() -> None:
     """Create tables if they don't exist. Call once at app startup."""
     with _connect() as conn:
         conn.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at    TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS finding_notes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 principal   TEXT NOT NULL,
@@ -83,7 +91,79 @@ def init_db() -> None:
                 UNIQUE(principal, capability)
             );
         """)
+    # Migration: add user_id to scans if upgrading from older schema
+    try:
+        conn.execute("ALTER TABLE scans ADD COLUMN user_id INTEGER REFERENCES users(id)")
+        log.info("Migrated scans table: added user_id column")
+    except Exception:
+        pass  # column already exists
+
     log.debug("Database initialised at %s", DB_PATH)
+
+
+# ── User account helpers ──────────────────────────────────────────────────────
+
+def create_user(username: str, password_hash: str) -> Optional[int]:
+    """Insert a new user. Returns the new user id, or None if username is taken."""
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    try:
+        with _connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)",
+                (username, password_hash, now),
+            )
+        return cur.lastrowid
+    except Exception:
+        return None  # username already taken (UNIQUE constraint)
+
+
+def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
+    """Return the user row for username, or None if not found."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE username = ?", (username,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_scan_user_id(scan_id: int) -> Optional[int]:
+    """Return the user_id that owns this scan, or None."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT user_id FROM scans WHERE id = ?", (scan_id,)
+        ).fetchone()
+    return row["user_id"] if row else None
+
+
+def list_scans_for_user(user_id: int) -> List[Dict[str, Any]]:
+    """Return summary list of scans owned by user_id, newest first."""
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, created_at, filename, total_principals,
+                   total_findings, critical, high, medium, low
+            FROM   scans
+            WHERE  user_id = ?
+            ORDER  BY id DESC
+            """,
+            (user_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def delete_all_scans_for_user(user_id: int) -> int:
+    """Delete all scans owned by user_id. Returns count removed."""
+    with _connect() as conn:
+        scan_ids = [r[0] for r in conn.execute(
+            "SELECT id FROM scans WHERE user_id = ?", (user_id,)
+        ).fetchall()]
+        for sid in scan_ids:
+            conn.execute("DELETE FROM scan_findings    WHERE scan_id = ?", (sid,))
+            conn.execute("DELETE FROM scan_remediation WHERE scan_id = ?", (sid,))
+            conn.execute("DELETE FROM scan_graph       WHERE scan_id = ?", (sid,))
+        conn.execute("DELETE FROM scans WHERE user_id = ?", (user_id,))
+    log.info("Deleted %d scans for user_id=%d", len(scan_ids), user_id)
+    return len(scan_ids)
 
 
 def save_scan(
@@ -93,6 +173,7 @@ def save_scan(
     remediation: Dict[str, Any],
     total_principals: int,
     graph: Optional[Dict] = None,
+    user_id: Optional[int] = None,
 ) -> int:
     """
     Persist a completed scan and return its new scan_id.
@@ -129,11 +210,11 @@ def save_scan(
             """
             INSERT INTO scans
                 (created_at, filename, total_principals, total_findings,
-                 critical, high, medium, low, criticality_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 critical, high, medium, low, criticality_json, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (now, filename, total_principals, len(findings),
-             critical, high, medium, low, criticality_json),
+             critical, high, medium, low, criticality_json, user_id),
         )
         scan_id = cur.lastrowid
 
@@ -394,21 +475,34 @@ def delete_finding_note(principal: str, capability: str) -> None:
         )
 
 
-def get_trend_data(limit: int = 20) -> List[Dict[str, Any]]:
+def get_trend_data(user_id: Optional[int] = None, limit: int = 20) -> List[Dict[str, Any]]:
     """
     Return per-scan severity counts ordered oldest→newest for trend charts.
-    Limited to the most recent `limit` scans.
+    Scoped to user_id when provided. Limited to the most recent `limit` scans.
     """
     with _connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, created_at, filename, total_findings,
-                   critical, high, medium, low
-            FROM   scans
-            ORDER  BY id DESC
-            LIMIT  ?
-            """,
-            (limit,),
-        ).fetchall()
+        if user_id is not None:
+            rows = conn.execute(
+                """
+                SELECT id, created_at, filename, total_findings,
+                       critical, high, medium, low
+                FROM   scans
+                WHERE  user_id = ?
+                ORDER  BY id DESC
+                LIMIT  ?
+                """,
+                (user_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, created_at, filename, total_findings,
+                       critical, high, medium, low
+                FROM   scans
+                ORDER  BY id DESC
+                LIMIT  ?
+                """,
+                (limit,),
+            ).fetchall()
     # Return oldest-first so chart renders left-to-right
     return list(reversed([dict(r) for r in rows]))

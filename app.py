@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, Response, session, jsonify, redirect, url_for, abort
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from werkzeug.security import generate_password_hash, check_password_hash
 import functools
 import json
 import logging
@@ -63,14 +64,13 @@ _IAM_TOP_LEVEL_KEYS = {
 }
 
 # ── C1: Authentication helpers ────────────────────────────────────────────────
-_ADMIN_USER     = os.environ.get("IAM_ADMIN_USER",     "admin")
-_ADMIN_PASSWORD = os.environ.get("IAM_ADMIN_PASSWORD", "")
+_USERNAME_RE = re.compile(r'^[a-zA-Z0-9_.-]{3,32}$')
 
 def require_auth(f):
     """Redirect to /login for browser routes; 401 for JSON API routes."""
     @functools.wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get("authenticated"):
+        if not session.get("user_id"):
             if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
                 return jsonify({"error": "Authentication required"}), 401
             return redirect(url_for("login", next=request.path))
@@ -115,26 +115,56 @@ def _validate_reason(reason: str) -> str:
     return reason[:500] if reason else ""
 
 
-# ── C1: Login / logout ───────────────────────────────────────────────────────
+# ── C1: Login / register / logout ────────────────────────────────────────────
 @app.route("/login", methods=["GET", "POST"])
 @limiter.limit("10 per minute; 30 per hour")
 def login():
-    if session.get("authenticated"):
+    if session.get("user_id"):
         return redirect("/")
     error = None
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        if (secrets.compare_digest(username, _ADMIN_USER)
-                and _ADMIN_PASSWORD
-                and secrets.compare_digest(password, _ADMIN_PASSWORD)):
+        user = db.get_user_by_username(username)
+        if user and check_password_hash(user["password_hash"], password):
             session.clear()
-            session["authenticated"] = True
-            session.permanent = True
-            _get_csrf_token()          # seed CSRF token immediately after login
+            session["user_id"]  = user["id"]
+            session["username"] = user["username"]
+            session.permanent   = True
+            _get_csrf_token()
             return redirect(request.args.get("next") or "/")
-        error = "Invalid credentials."
+        error = "Invalid username or password."
     return render_template("login.html", error=error)
+
+
+@app.route("/register", methods=["GET", "POST"])
+@limiter.limit("5 per hour")
+def register():
+    if session.get("user_id"):
+        return redirect("/")
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        confirm  = request.form.get("confirm", "")
+        if not _USERNAME_RE.match(username):
+            error = "Username must be 3–32 characters: letters, numbers, _ . -"
+        elif len(password) < 8:
+            error = "Password must be at least 8 characters."
+        elif password != confirm:
+            error = "Passwords do not match."
+        else:
+            user_id = db.create_user(username, generate_password_hash(password))
+            if user_id is None:
+                error = "Username already taken."
+            else:
+                session.clear()
+                session["user_id"]  = user_id
+                session["username"] = username
+                session.permanent   = True
+                _get_csrf_token()
+                return redirect("/")
+    return render_template("register.html", error=error)
 
 
 @app.route("/logout")
@@ -144,13 +174,11 @@ def logout():
 
 
 @app.route("/")
-@require_auth
 def index():
     return render_template("index.html")
 
 
 @app.route("/analyze", methods=["POST"])
-@require_auth
 @csrf_protect
 @limiter.limit("20 per hour")
 def analyze():
@@ -232,6 +260,7 @@ def analyze():
                 "full_nodes": full_nodes,
                 "full_edges": full_edges,
             },
+            user_id=session.get("user_id"),
         )
         session["scan_id"] = scan_id
     except Exception:
@@ -262,7 +291,6 @@ def analyze():
 
 
 @app.route("/dashboard")
-@require_auth
 def dashboard():
     scan_id = session.get("scan_id")
     scan    = db.get_scan(scan_id) if scan_id else None
@@ -301,11 +329,10 @@ def dashboard():
 @app.route("/history-page")
 @require_auth
 def history_page():
-    return render_template("history.html", scans=db.list_scans())
+    return render_template("history.html", scans=db.list_scans_for_user(session["user_id"]))
 
 
 @app.route("/principal/<path:principal_name>")
-@require_auth
 def principal_detail(principal_name: str):
     # M1/H7: Only allow access to the scan that belongs to this session
     scan_id = request.args.get("scan_id", type=int) or session.get("scan_id")
@@ -347,7 +374,6 @@ def principal_detail(principal_name: str):
 
 
 @app.route("/export/json")
-@require_auth
 def export_json():
     scan_id = request.args.get("scan_id", type=int) or session.get("scan_id")
     # M1: Only serve scans owned by the current session
@@ -389,7 +415,6 @@ def export_json():
 
 
 @app.route("/export/pdf")
-@require_auth
 def export_pdf():
     scan_id = request.args.get("scan_id", type=int) or session.get("scan_id")
     if not scan_id or scan_id != session.get("scan_id"):
@@ -444,14 +469,13 @@ def remove_suppression(sup_id: int):
 @app.route("/history")
 @require_auth
 def history():
-    return jsonify(db.list_scans())
+    return jsonify(db.list_scans_for_user(session["user_id"]))
 
 
 @app.route("/history/<int:scan_id>")
 @require_auth
 def history_scan(scan_id: int):
-    # M1: Only allow access to the current session's scan
-    if scan_id != session.get("scan_id"):
+    if db.get_scan_user_id(scan_id) != session["user_id"]:
         abort(403)
     scan = db.get_scan(scan_id)
     if not scan:
@@ -466,6 +490,9 @@ def compare_scans():
     id_b = request.args.get("b", type=int)
     if not id_a or not id_b:
         return redirect("/history-page")
+    uid = session["user_id"]
+    if db.get_scan_user_id(id_a) != uid or db.get_scan_user_id(id_b) != uid:
+        abort(403)
     result = db.compare_scans(id_a, id_b)
     if not result:
         return redirect("/history-page")
@@ -512,11 +539,11 @@ def delete_note():
 @require_auth
 @csrf_protect
 def delete_scan(scan_id: int):
-    # H7: Only allow deleting the current session's scan
-    if scan_id != session.get("scan_id"):
+    if db.get_scan_user_id(scan_id) != session["user_id"]:
         abort(403)
     db.delete_scan(scan_id)
-    session.pop("scan_id", None)
+    if session.get("scan_id") == scan_id:
+        session.pop("scan_id", None)
     return jsonify({"status": "deleted"})
 
 
@@ -524,7 +551,7 @@ def delete_scan(scan_id: int):
 @require_auth
 @csrf_protect
 def delete_all_scans():
-    count = db.delete_all_scans()
+    count = db.delete_all_scans_for_user(session["user_id"])
     session.pop("scan_id", None)
     return jsonify({"status": "deleted", "count": count})
 
@@ -533,8 +560,7 @@ def delete_all_scans():
 @require_auth
 @csrf_protect
 def rename_scan(scan_id: int):
-    # H7: Only allow renaming the current session's scan
-    if scan_id != session.get("scan_id"):
+    if db.get_scan_user_id(scan_id) != session["user_id"]:
         abort(403)
     data     = request.get_json(silent=True) or {}
     new_name = data.get("name", "").strip()[:256]
@@ -549,7 +575,7 @@ def rename_scan(scan_id: int):
 @app.route("/api/trend")
 @require_auth
 def trend_data():
-    return jsonify(db.get_trend_data())
+    return jsonify(db.get_trend_data(user_id=session["user_id"]))
 
 
 @app.route("/api/remediate", methods=["POST"])
