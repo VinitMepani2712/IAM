@@ -82,6 +82,12 @@ def init_db() -> None:
                 FOREIGN KEY (scan_id) REFERENCES scans(id)
             );
 
+            CREATE TABLE IF NOT EXISTS ai_remediation_cache (
+                cache_key  TEXT PRIMARY KEY,
+                result     TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS suppressions (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 principal  TEXT NOT NULL,
@@ -506,3 +512,31 @@ def get_trend_data(user_id: Optional[int] = None, limit: int = 20) -> List[Dict[
             ).fetchall()
     # Return oldest-first so chart renders left-to-right
     return list(reversed([dict(r) for r in rows]))
+
+
+# ── AI remediation cache ──────────────────────────────────────────────────────
+
+def get_ai_cache(cache_key: str) -> Optional[Dict]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT result FROM ai_remediation_cache WHERE cache_key = ?",
+            (cache_key,),
+        ).fetchone()
+    if row:
+        try:
+            return json.loads(row["result"])
+        except Exception:
+            return None
+    return None
+
+
+def set_ai_cache(cache_key: str, result: Dict) -> None:
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO ai_remediation_cache (cache_key, result, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (cache_key, json.dumps(result), now),
+        )

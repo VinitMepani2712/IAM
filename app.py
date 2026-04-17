@@ -576,6 +576,7 @@ def ai_remediate():
     if not api_key:
         return jsonify({"error": "GEMINI_API_KEY not configured on this server."}), 503
 
+    import hashlib
     import requests as _requests
 
     data       = request.get_json(silent=True) or {}
@@ -588,6 +589,15 @@ def ai_remediate():
     mitre      = data.get("mitre", "")
     cross_acct = data.get("cross_account", False)
     conditions = data.get("condition_flags", {})
+
+    # Return cached result if this exact finding was already analyzed
+    _cache_key = hashlib.sha256(
+        json.dumps({"principal": principal, "capability": capability,
+                    "severity": severity, "pattern": pattern}, sort_keys=True).encode()
+    ).hexdigest()
+    cached = db.get_ai_cache(_cache_key)
+    if cached:
+        return jsonify(cached)
 
     path_str = " → ".join(path) if path else "N/A"
     cond_summary = []
@@ -636,6 +646,7 @@ Respond with EXACTLY this JSON structure (no markdown, no extra text):
                 raw = raw[4:]
             raw = raw.strip()
         result = json.loads(raw)
+        db.set_ai_cache(_cache_key, result)
         return jsonify(result)
     except json.JSONDecodeError:
         return jsonify({"explanation": raw, "remediation_steps": [], "iam_policy_fix": "", "terraform_snippet": ""})
