@@ -45,6 +45,24 @@
             <span id="themeIcon">☀️</span>
             <span id="themeLabel">Light Mode</span>
         </button>
+
+        <div style="margin-top:auto;padding:14px 12px 8px;border-top:1px solid rgba(255,255,255,0.06);">
+          {% if session.username %}
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;color:#fff;flex-shrink:0;">
+              {{ session.username[0]|upper }}
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:0.82rem;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ session.username }}</div>
+              <a href="/logout" style="font-size:0.72rem;color:#64748b;text-decoration:none;" onmouseenter="this.style.color='#94a3b8'" onmouseleave="this.style.color='#64748b'">Sign out</a>
+            </div>
+          </div>
+          {% else %}
+          <div style="font-size:0.78rem;color:#475569;line-height:1.6;">
+            <a href="/login" style="color:#3b82f6;text-decoration:none;font-weight:600;">Sign in</a> to save your scan history
+          </div>
+          {% endif %}
+        </div>
     </aside>
 
     <main class="main-content">
