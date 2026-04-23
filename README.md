@@ -418,7 +418,3 @@ IAM/
 | API key protection | Gemini key sent in `x-goog-api-key` header, never in URL (prevents proxy log exposure) |
 | AI response caching | Identical findings served from SQLite cache (SHA-256 keyed), not re-queried |
 | XSS prevention | Chart.js data injected via `json.dumps()` in template, not raw interpolation |
-
----
-
-*ECE 507 Security Engineering — Semester 3, MSCS*
