@@ -72,19 +72,6 @@
         </div>
     </div>
 
-    <!-- AI Remediation Modal -->
-    <div class="modal-overlay" id="aiModal" onclick="closeAIModal(event)">
-        <div class="modal-box" style="max-width:680px;">
-            <div class="modal-header">
-                <h3>AI Remediation</h3>
-                <button class="modal-close" onclick="closeAIModal()">✕ Close</button>
-            </div>
-            <div class="modal-body" id="aiModalBody" style="padding:20px;">
-                <div class="modal-empty">Loading…</div>
-            </div>
-        </div>
-    </div>
-
     <div class="modal-overlay" id="suppressModal" onclick="closeSuppressionModal(event)">
         <div class="modal-box">
             <div class="modal-header">
@@ -541,12 +528,6 @@
                                 onclick="suppressFinding(this, '{{ f.principal | e }}', '{{ f.capability | e }}')"
                                 title="Mark as false positive">
                                 Suppress
-                            </button>
-                            <button class="btn-suppress btn-ai-fix"
-                                data-idx="{{ loop.index0 }}"
-                                style="background:#1e3a5f;color:#7dd3fc;border:1px solid #1d4ed8;"
-                                title="Get AI-powered remediation suggestion">
-                                AI Fix
                             </button>
                             <button class="btn-suppress btn-note"
                                 data-idx="{{ loop.index0 }}"
@@ -1784,63 +1765,6 @@
             return `• Review IAM policies for wildcard permissions\n• Remove excessive privileges\n• Apply least privilege principles\n• Enable continuous IAM posture monitoring`;
         }
 
-        // ── AI Fix ────────────────────────────────────────────────────────────
-        document.addEventListener('click', e => {
-            const btn = e.target.closest('.btn-ai-fix');
-            if (!btn) return;
-            const idx     = parseInt(btn.dataset.idx, 10);
-            const finding = allFindings[idx];
-            if (!finding) return;
-            openAIModal(btn, finding);
-        });
-
-        function openAIModal(btn, finding) {
-            const body = document.getElementById('aiModalBody');
-            body.innerHTML = `<div class="modal-empty" style="padding:40px;">
-                <svg style="width:28px;height:28px;margin:0 auto 12px;display:block;animation:spin 1s linear infinite;color:#3b82f6;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                Finding remediation advice…</div>`;
-            document.getElementById('aiModal').classList.add('open');
-            btn.disabled = true;
-
-            fetch('/api/remediate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(finding)
-            })
-            .then(r => r.json())
-            .then(data => {
-                btn.disabled = false;
-                if (data.error) {
-                    body.innerHTML = `<div style="color:#f87171;padding:20px;">${escHtml(data.error)}</div>`;
-                    return;
-                }
-                const steps = (data.remediation_steps || []).map(s => `<li style="margin-bottom:6px;">${escHtml(s)}</li>`).join('');
-                const policyCode = data.iam_policy_fix
-                    ? `<h4 class="ai-section-label">IAM Policy Fix</h4>
-                       <pre class="ai-code-block ai-code-green">${escHtml(data.iam_policy_fix)}</pre>` : '';
-                const tfCode = data.terraform_snippet
-                    ? `<h4 class="ai-section-label">Terraform</h4>
-                       <pre class="ai-code-block ai-code-purple">${escHtml(data.terraform_snippet)}</pre>` : '';
-                body.innerHTML = `
-                    <div class="ai-explanation-box">
-                        <p style="margin:0;line-height:1.6;font-size:0.87rem;">${escHtml(data.explanation || '')}</p>
-                    </div>
-                    ${data.impact ? `<div class="ai-impact-box">
-                        <p style="margin:0;line-height:1.6;font-size:0.84rem;"><strong>Impact:</strong> ${escHtml(data.impact)}</p></div>` : ''}
-                    <h4 class="ai-section-label">Remediation Steps</h4>
-                    <ol class="ai-steps-list">${steps}</ol>
-                    ${policyCode}${tfCode}`;
-            })
-            .catch(err => {
-                btn.disabled = false;
-                body.innerHTML = `<div style="color:#f87171;padding:20px;">Request failed: ${escHtml(String(err))}</div>`;
-            });
-        }
-
-        function closeAIModal(e) {
-            if (e && e.target !== document.getElementById('aiModal')) return;
-            document.getElementById('aiModal').classList.remove('open');
-        }
     </script>
     <!-- Risk breakdown tooltip -->
     <div id="riskTooltip" style="

@@ -118,12 +118,6 @@ Results are rendered in a full-featured web dashboard with an interactive attack
 - Search by principal name, action, or capability
 - Filter by severity and attack pattern
 
-### AI Remediation (Google Gemini)
-- Sends finding context (principal, capability, attack path, MITRE mapping, trust conditions) to Gemini 2.0 Flash Lite
-- Returns: plain-English explanation, business impact, step-by-step remediation, IAM policy fix JSON, Terraform HCL snippet
-- Results cached in SQLite — repeated requests return instantly, zero API calls
-- Requires `GEMINI_API_KEY` (free tier at aistudio.google.com)
-
 ### User Accounts & History
 - Multi-user registration and login
 - Each user's scan history is private — other users cannot access it
@@ -153,7 +147,6 @@ Flask (app.py)
    ├── /history-page        GET  — scan history (login required)
    ├── /compare             GET  — diff two scans
    ├── /principal/<name>    GET  — principal detail view
-   ├── /api/remediate       POST — AI remediation via Gemini (login required)
    ├── /api/trend           GET  — risk trend data for Chart.js
    ├── /export/json         GET  — download findings as JSON
    ├── /export/pdf          GET  — download PDF report
@@ -322,7 +315,6 @@ The project includes `render.yaml` for Render deployment via Docker.
 | Variable | Required | Description |
 |---|---|---|
 | `IAM_SECRET_KEY` | **Yes** | Flask session secret key. App refuses to start without it. Generate with `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `GEMINI_API_KEY` | No | Google Gemini API key for AI remediation (free at aistudio.google.com) |
 | `IAM_DB_PATH` | No | SQLite database file path. Default: `iam_defender.db` |
 | `IAM_LOG_LEVEL` | No | Logging level: `DEBUG` / `INFO` / `WARNING` / `ERROR`. Default: `INFO` |
 | `IAM_HTTPS` | No | Set to `1` to enable `Secure` flag on session cookies (use when behind HTTPS proxy) |
@@ -399,7 +391,6 @@ IAM/
 | Graph visualization | vis.js (force physics + manual tree layout) |
 | Charts | Chart.js 4 |
 | PDF export | ReportLab 4 |
-| AI remediation | Google Gemini 2.0 Flash Lite (free REST API) |
 | Password hashing | Werkzeug PBKDF2-SHA256 |
 | Deployment | Docker, Render, gunicorn (Linux/production) |
 
@@ -418,3 +409,5 @@ IAM/
 | API key protection | Gemini key sent in `x-goog-api-key` header, never in URL (prevents proxy log exposure) |
 | AI response caching | Identical findings served from SQLite cache (SHA-256 keyed), not re-queried |
 | XSS prevention | Chart.js data injected via `json.dumps()` in template, not raw interpolation |
+
+
