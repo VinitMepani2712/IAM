@@ -514,6 +514,32 @@ def get_trend_data(user_id: Optional[int] = None, limit: int = 20) -> List[Dict[
     return list(reversed([dict(r) for r in rows]))
 
 
+# ── Previous-scan comparison ─────────────────────────────────────────────────
+
+def get_previous_scan_finding_keys(user_id: int, before_scan_id: int) -> set:
+    """Return set of 'principal|capability' strings from the scan immediately
+    before before_scan_id for this user. Returns empty set if no prior scan."""
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT sf.data
+            FROM   scan_findings sf
+            JOIN   scans s ON s.id = sf.scan_id
+            WHERE  s.user_id = ? AND s.id < ?
+            ORDER  BY s.id DESC
+            LIMIT  1
+            """,
+            (user_id, before_scan_id),
+        ).fetchone()
+    if not row:
+        return set()
+    try:
+        findings = json.loads(row["data"])
+        return {f"{f.get('principal','')}|{f.get('capability','')}" for f in findings}
+    except Exception:
+        return set()
+
+
 # ── AI remediation cache ──────────────────────────────────────────────────────
 
 def get_ai_cache(cache_key: str) -> Optional[Dict]:

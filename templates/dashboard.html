@@ -474,6 +474,7 @@
                     {% set note = finding_notes.get(note_key, {}) %}
                     {% set st = note.get('status', 'open') %}
                     {% set cf = f.get('condition_flags', {}) %}
+                    {% set is_new = (f.principal ~ '|' ~ f.capability) in new_finding_keys %}
                     <tr class="finding-row" data-severity="{{ f.severity }}"
                         data-path='{{ f.path | tojson }}'
                         data-conditions='{{ cf | tojson }}'
@@ -492,6 +493,7 @@
                         <td class="finding-cell">
                             <a href="/principal/{{ f.principal | urlencode }}?scan_id={{ scan_id }}" class="principal-link">
                                 {{ f.principal }}{% if f.get('cross_account') %}<span class="badge-xacct">⚡ Cross-Acct</span>{% endif %}
+                                {% if is_new %}<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#6ee7b7;font-size:0.65rem;font-weight:800;letter-spacing:.05em;vertical-align:middle;">NEW</span>{% endif %}
                             </a>
                             <span class="capability-label">{{ f.capability }}</span>
                             {% if f.mitre %}<span class="mitre-tag">{{ f.mitre }}</span>{% endif %}

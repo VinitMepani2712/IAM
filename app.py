@@ -257,6 +257,18 @@ def analyze():
 
     finding_notes = db.get_finding_notes()
 
+    # Compute which findings are new vs the user's previous scan
+    new_finding_keys: set = set()
+    user_id = session.get("user_id")
+    if user_id and scan_id:
+        prev_keys = db.get_previous_scan_finding_keys(user_id, scan_id)
+        if prev_keys:
+            new_finding_keys = {
+                f"{f.get('principal','')}|{f.get('capability','')}"
+                for f in findings
+                if f"{f.get('principal','')}|{f.get('capability','')}" not in prev_keys
+            }
+
     return render_template(
         "dashboard.html",
         findings=findings,
@@ -273,6 +285,7 @@ def analyze():
         filename=filename,
         scan_time=scan_time,
         finding_notes=finding_notes,
+        new_finding_keys=new_finding_keys,
     )
 
 
@@ -309,6 +322,7 @@ def dashboard():
         filename=scan.get("filename", ""),
         scan_time=scan.get("created_at", ""),
         finding_notes=db.get_finding_notes(),
+        new_finding_keys=set(),
     )
 
 
