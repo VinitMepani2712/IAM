@@ -317,6 +317,7 @@
                     <button onclick="showEscalation()" class="btn-tab active" id="btn-escalation">Escalation View</button>
                     <button onclick="expandGraph()" class="btn-tab" id="btn-full">Full Topology</button>
                     <button onclick="network.fit({animation:{duration:500,easingFunction:'easeInOutQuad'}})" class="btn-tab">⊞ Fit</button>
+                    <button onclick="toggleGraphLayout()" class="btn-tab" id="btn-layout">🌲 Tree View</button>
                     <button onclick="resetGraph()" class="btn-tab">Reset</button>
                     <button onclick="exportGraphPNG()" class="btn-tab" title="Save graph as PNG image">📷 Save PNG</button>
                     <button onclick="runAttackSimulation()" class="btn-tab" id="btn-simulate" title="Animate escalation paths — cycles through top 20 by risk score" style="background:rgba(239,68,68,0.12);color:#ef4444;border-color:rgba(239,68,68,0.35);">⚡ Simulate Attack</button>
@@ -658,6 +659,17 @@
         }
 
         function applyBaseNodeStyles() {
+            // Pre-compute worst severity per principal for border coloring
+            const _sevRank = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+            const _worstSev = {};
+            if (typeof allFindings !== "undefined") {
+                allFindings.forEach(f => {
+                    const r = _sevRank[f.severity] || 0;
+                    if (!_worstSev[f.principal] || r > (_sevRank[_worstSev[f.principal]] || 0))
+                        _worstSev[f.principal] = f.severity;
+                });
+            }
+
             nodes.forEach(node => {
                 // ── Principal node ────────────────────────────────────────────
                 node.shape  = "dot";
@@ -671,6 +683,21 @@
                 node.label  = node.id.length > 22 ? node.id.slice(0, 20) + "…" : node.id;
                 node.title  = makeTooltip("Principal", node.id);
                 node.borderWidth = 2;
+
+                // ── Severity-colored border for principal nodes ───────────────
+                if (!node.id.startsWith("CAPABILITY::") && !node.id.startsWith("ACTION::")) {
+                    const ws = _worstSev[node.id];
+                    if (ws === "HIGH") {
+                        node.color.border = "#f97316"; node.borderWidth = 3;
+                        node.shadow.color = "rgba(249,115,22,0.5)";
+                    } else if (ws === "MEDIUM") {
+                        node.color.border = "#eab308"; node.borderWidth = 2.5;
+                        node.shadow.color = "rgba(234,179,8,0.4)";
+                    } else if (ws === "LOW") {
+                        node.color.border = "#22c55e"; node.borderWidth = 2;
+                        node.shadow.color = "rgba(34,197,94,0.35)";
+                    }
+                }
 
                 if (node.id.startsWith("CAPABILITY::")) {
                     // ── Capability node ───────────────────────────────────────
@@ -811,6 +838,61 @@
             const loader = document.getElementById("graphLoading");
             if (loader) loader.style.display = "none";
         });
+
+        /* ── LAYOUT TOGGLE (Force ↔ Tree) ─────────────────────────────────── */
+        let _layoutMode = "force";
+
+        function toggleGraphLayout() {
+            _layoutMode = _layoutMode === "force" ? "tree" : "force";
+            const btn = document.getElementById("btn-layout");
+            if (_layoutMode === "tree") {
+                btn.textContent = "⚡ Force View";
+                setTreeLayout();
+            } else {
+                btn.textContent = "🌲 Tree View";
+                setForceLayout();
+            }
+        }
+
+        function setTreeLayout() {
+            network.setOptions({ physics: { enabled: false } });
+            const principals = [], actions = [], capabilities = [];
+            nodes.forEach(n => {
+                if (n.id.startsWith("CAPABILITY::"))    capabilities.push(n.id);
+                else if (n.id.startsWith("ACTION::"))   actions.push(n.id);
+                else                                    principals.push(n.id);
+            });
+            const V_GAP = 75;
+            function positionColumn(ids, x) {
+                const half = (ids.length - 1) / 2;
+                ids.forEach((id, i) => {
+                    nodes.update({ id, x, y: (i - half) * V_GAP, fixed: { x: true, y: true } });
+                });
+            }
+            positionColumn(principals,   -550);
+            positionColumn(actions,          0);
+            positionColumn(capabilities,  550);
+            network.setOptions({ edges: { smooth: { type: "continuous", roundness: 0.3 } } });
+            setTimeout(() => network.fit({ animation: { duration: 700, easingFunction: "easeInOutQuad" } }), 60);
+        }
+
+        function setForceLayout() {
+            nodes.forEach(n => nodes.update({ id: n.id, fixed: false }));
+            network.setOptions({
+                physics: {
+                    enabled: true, solver: "forceAtlas2Based",
+                    forceAtlas2Based: { gravitationalConstant: -160, centralGravity: 0.012,
+                        springLength: 220, springConstant: 0.06, damping: 0.88, avoidOverlap: 1.0 },
+                    stabilization: { enabled: true, iterations: 200, fit: true },
+                    minVelocity: 0.4
+                },
+                edges: { smooth: { type: "cubicBezier", forceDirection: "none", roundness: 0.35 } }
+            });
+            network.once("stabilizationIterationsDone", () => {
+                network.setOptions({ physics: { enabled: false } });
+                network.fit({ animation: { duration: 600, easingFunction: "easeInOutQuad" } });
+            });
+        }
 
         /* Node click → highlight all escalation paths through that node */
         network.on("click", params => {
