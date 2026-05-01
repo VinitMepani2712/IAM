@@ -732,12 +732,16 @@ tbody tr:hover {
         gap: 8px;
         width: 100%;
     }
-    .btn-export { font-size: 0.78rem; padding: 7px 12px; }
+    .btn-export { font-size: 0.75rem; padding: 6px 10px; flex: 1; justify-content: center; min-width: 0; }
 
-    /* Stats grid — 2 cols on mobile */
-    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    /* Stats grid — force 2 cols on mobile */
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px;
+    }
     .stat-card { padding: 14px; }
-    .stat-value { font-size: 1.8rem; }
+    .stat-card h3 { font-size: 0.72rem; }
+    .stat-value { font-size: 1.6rem; }
 
     /* Cards */
     .card { border-radius: 10px; }

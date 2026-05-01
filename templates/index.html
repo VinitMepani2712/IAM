@@ -10,7 +10,11 @@
 
 <body>
 
-    <aside class="sidebar">
+    <!-- Mobile hamburger -->
+    <button class="mobile-nav-btn" id="mobileNavBtn" onclick="toggleMobileNav()" aria-label="Open menu">&#9776;</button>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileNav()"></div>
+
+    <aside class="sidebar" id="sidebar">
         <div class="brand">
             <div class="brand-shield">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.2"
@@ -225,6 +229,14 @@
                 _updateIndexThemeBtn(true);
             }
         })();
+        function toggleMobileNav() {
+            document.getElementById('sidebar').classList.toggle('open');
+            document.getElementById('sidebarOverlay').classList.toggle('open');
+        }
+        function closeMobileNav() {
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('sidebarOverlay').classList.remove('open');
+        }
     </script>
 
 </body>
