@@ -417,15 +417,27 @@ body {
 }
 
 @media (max-width: 768px) {
-    .sidebar {
-        display: none;
-    }
+    .sidebar { display: none; }
 
     .main-content {
         margin-left: 0;
-        padding: 32px 24px;
+        padding: 24px 16px;
         max-width: 100%;
     }
+
+    .page-title { font-size: 1.6rem; }
+    .page-sub   { font-size: 0.85rem; }
+
+    .card { border-radius: 10px; }
+    .card-inner { padding: 18px; }
+    .card-title { font-size: 0.95rem; }
+
+    .drop-zone { padding: 28px 16px; }
+    .drop-title { font-size: 0.9rem; }
+
+    .btn-primary { font-size: 0.9rem; padding: 0.8rem; }
+
+    .hint-code { font-size: 0.78rem; overflow-x: auto; }
 }
 
 /* ── Dark mode overrides ─────────────────────────── */

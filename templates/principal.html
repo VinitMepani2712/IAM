@@ -25,7 +25,9 @@
 </head>
 <body>
 
-<aside class="sidebar">
+<button class="mobile-nav-btn" id="mobileNavBtn" onclick="toggleMobileNav()" aria-label="Open menu">&#9776;</button>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileNav()"></div>
+<aside class="sidebar" id="sidebar">
     <div class="brand">
         <i data-feather="shield"></i>
         <span>IAM Defender</span>
@@ -207,5 +209,15 @@ function _updateThemeBtn(isLight) {
     .status-in_remediation { background:#0c1a2e; color:#93c5fd; border:1px solid #1d4ed8; }
     .status-accepted_risk  { background:#14532d; color:#86efac; border:1px solid #166534; }
 </style>
+<script>
+function toggleMobileNav() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebarOverlay').classList.toggle('open');
+}
+function closeMobileNav() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebarOverlay').classList.remove('open');
+}
+</script>
 </body>
 </html>

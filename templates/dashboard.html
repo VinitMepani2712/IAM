@@ -84,7 +84,11 @@
         </div>
     </div>
 
-    <aside class="sidebar">
+    <!-- Mobile hamburger -->
+    <button class="mobile-nav-btn" id="mobileNavBtn" onclick="toggleMobileNav()" aria-label="Open menu">&#9776;</button>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileNav()"></div>
+
+    <aside class="sidebar" id="sidebar">
         <div class="brand">
             <i data-feather="shield"></i>
             <span>IAM Defender</span>
@@ -1855,6 +1859,26 @@
             return `• Review IAM policies for wildcard permissions\n• Remove excessive privileges\n• Apply least privilege principles\n• Enable continuous IAM posture monitoring`;
         }
 
+    </script>
+    <script>
+    function toggleMobileNav() {
+        document.getElementById('sidebar').classList.toggle('open');
+        document.getElementById('sidebarOverlay').classList.toggle('open');
+    }
+    function closeMobileNav() {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebarOverlay').classList.remove('open');
+    }
+    // Also wrap the findings table in a scroll container on mobile
+    if (window.innerWidth <= 768) {
+        const tbl = document.getElementById('findingsTable');
+        if (tbl && !tbl.parentElement.classList.contains('table-scroll')) {
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'overflow-x:auto;-webkit-overflow-scrolling:touch;';
+            tbl.parentNode.insertBefore(wrap, tbl);
+            wrap.appendChild(tbl);
+        }
+    }
     </script>
     <!-- Risk breakdown tooltip -->
     <div id="riskTooltip" style="

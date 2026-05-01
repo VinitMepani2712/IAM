@@ -658,17 +658,166 @@ tbody tr:hover {
     border-color: var(--accent);
 }
 
-/* Responsive */
+/* ── Mobile hamburger button ─────────────────────────────────── */
+.mobile-nav-btn {
+    display: none;
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 201;
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-sidebar);
+    color: var(--text-main);
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    transition: background 0.15s;
+}
+.mobile-nav-btn:hover { background: var(--accent); border-color: var(--accent); }
 
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 99;
+}
+.sidebar-overlay.open { display: block; }
+
+/* ── Tablet (1024px) ─────────────────────────────────────────── */
 @media (max-width: 1024px) {
-    .sidebar {
-        display: none;
-    }
+    .sidebar { display: none; }
+    .main-content { margin-left: 0; padding: 20px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
 
+/* ── Mobile (768px) ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+    /* Hamburger button */
+    .mobile-nav-btn { display: flex; }
+
+    /* Sidebar becomes a slide-in drawer */
+    .sidebar {
+        display: flex !important;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        z-index: 100;
+        width: 260px;
+    }
+    .sidebar.open { transform: translateX(0); }
+
+    /* Main content — full width, leave room for hamburger */
     .main-content {
         margin-left: 0;
-        padding: 20px;
+        padding: 16px;
+        padding-top: 64px;
     }
+
+    /* Top bar stacks vertically */
+    .top-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+    .top-bar h1 { font-size: 1.25rem; }
+    .top-bar > div:last-child {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        width: 100%;
+    }
+    .btn-export { font-size: 0.78rem; padding: 7px 12px; }
+
+    /* Stats grid — 2 cols on mobile */
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .stat-card { padding: 14px; }
+    .stat-value { font-size: 1.8rem; }
+
+    /* Cards */
+    .card { border-radius: 10px; }
+    .card-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .card-header .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        width: 100%;
+    }
+    .btn-tab { font-size: 0.72rem; padding: 5px 10px; }
+
+    /* Graph — fixed height on mobile */
+    #network { height: 340px !important; }
+
+    /* Graph severity chips wrap */
+    .btn-sev-chip { font-size: 0.72rem; padding: 4px 10px; }
+
+    /* Findings table — horizontal scroll */
+    .table-wrapper { overflow: hidden; }
+    #findingsTable { min-width: 700px; }
+    .table-wrapper > .card-header,
+    .table-wrapper > div:not(table) { min-width: 0; }
+
+    /* Wrap the table in a scrollable container */
+    section.card.table-wrapper > table,
+    section.card.table-wrapper #findingsTable {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Search + filter bar stacks */
+    .table-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+    .table-controls input,
+    .table-controls select { width: 100%; }
+
+    /* Severity filter buttons wrap */
+    .table-header > div { flex-wrap: wrap; }
+
+    /* Investigation panel full-width */
+    .detail-panel { width: 100% !important; right: 0 !important; left: 0 !important; }
+
+    /* Remediation section */
+    .remediation-card .card-header { flex-direction: column; }
+
+    /* History table scroll */
+    #historyTable {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        min-width: 600px;
+    }
+
+    /* Compare page delta grid */
+    .delta-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    .compare-header { grid-template-columns: 1fr !important; }
+    .vs-badge { display: none; }
+
+    /* Modal full-screen on mobile */
+    .modal-box {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0;
+        border-radius: 16px 16px 0 0;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        max-height: 85vh;
+        overflow-y: auto;
+    }
+    .modal-overlay { align-items: flex-end; }
+
+    /* Principal detail grid */
+    .detail-grid { grid-template-columns: 1fr 1fr !important; }
 }
 
 /* ── Top bar with export buttons ─────────────────────────────── */

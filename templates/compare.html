@@ -32,7 +32,9 @@
 </head>
 <body>
 
-<aside class="sidebar">
+<button class="mobile-nav-btn" id="mobileNavBtn" onclick="toggleMobileNav()" aria-label="Open menu">&#9776;</button>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileNav()"></div>
+<aside class="sidebar" id="sidebar">
     <div class="brand">
         <i data-feather="shield"></i>
         <span>IAM Defender</span>
@@ -254,6 +256,16 @@
 
 </main>
 
-<script>feather.replace();</script>
+<script>
+feather.replace();
+function toggleMobileNav() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebarOverlay').classList.toggle('open');
+}
+function closeMobileNav() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebarOverlay').classList.remove('open');
+}
+</script>
 </body>
 </html>
